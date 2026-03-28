@@ -3,9 +3,8 @@
 ## Overview
 SYM-Lite is a lean, purpose-built script for executing Jamf Pro Policy Custom Triggers and Installomator labels through a unified swiftDialog selection interface.
 
-**Version:** 0.0.1a2  
+**Version:** 0.0.1a3  
 **File:** `SYM-Lite.zsh`  
-**Size:** 43KB (1,239 lines)  
 **Status:** ✓ Syntax validated, includes logMonitor support
 
 ---
@@ -29,7 +28,7 @@ SYM-Lite is a lean, purpose-built script for executing Jamf Pro Policy Custom Tr
 
 ### Adding Installomator Items
 
-Edit the `installomatorItems` array (lines ~120-128):
+Edit the `installomatorItems` array near the top of `SYM-Lite.zsh`:
 
 ```zsh
 installomatorItems=(
@@ -48,7 +47,7 @@ installomatorItems=(
 
 ### Adding Jamf Policy Items
 
-Edit the `jamfPolicyItems` array (lines ~131-136):
+Edit the `jamfPolicyItems` array near the top of `SYM-Lite.zsh`:
 
 ```zsh
 jamfPolicyItems=(
@@ -78,7 +77,7 @@ jamfPolicyItems=(
 Run the script as root with no parameters:
 
 ```bash
-sudo ~/Downloads/Setup-Your-Mac/SYM-Lite.zsh
+sudo ~/Downloads/SYM-Lite.zsh
 ```
 
 **User experience:**
@@ -90,7 +89,7 @@ sudo ~/Downloads/Setup-Your-Mac/SYM-Lite.zsh
 
 ### Silent Mode
 
-Run with Jamf parameters or command-line flags:
+Run with Jamf parameters or direct positional arguments:
 
 **Via Jamf Policy:**
 - Parameter 4: `silent`
@@ -106,6 +105,7 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,googlechrome"
 - CSV list parsed directly
 - No Inspect Mode or completion dialogs
 - No restart prompt
+- Same pre-flight checks still run, including `swiftDialog` validation / installation
 - Exits with an error if the CSV contains no valid item IDs
 - Suitable for automated deployment
 
@@ -114,18 +114,20 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,googlechrome"
 ## Dependencies
 
 ### Required
-- **macOS** 10.14+
+- **macOS** 15+ (required by swiftDialog 3.x)
 - **Root access** — Script must run as root
 - **swiftDialog** 3.0.1.4955+ (auto-installed if missing)
 
-### Conditional
-- **Installomator** — Required if Installomator items configured
+### External Command Dependencies
+- **Installomator** — Required for selected Installomator items to succeed
   - Default path: `/Library/Management/AppAutoPatch/Installomator/Installomator.sh`
   - Edit `organizationInstallomatorFile` variable to customize
-  - Must be non-zero bytes; a zero-byte file is treated as missing (detected at pre-flight)
-- **Jamf Pro Client** — Required if Jamf policy items configured
+  - If the configured file exists but is zero bytes, pre-flight exits with a fatal error
+  - If the binary is missing, pre-flight logs warnings and selected Installomator items will fail at execution time
+- **Jamf Pro Client** — Required for selected Jamf policy items to succeed
   - Default path: `/usr/local/bin/jamf`
   - Edit `jamfBinary` variable to customize
+  - If the binary is missing, pre-flight logs warnings and selected Jamf policy items will fail at execution time
 
 ---
 
@@ -335,9 +337,14 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 
 ### Installomator failures
 - Verify Installomator path: `ls -lah /Library/Management/.../Installomator.sh`
-- Verify file is non-zero bytes — a zero-byte file is detected at pre-flight and Installomator items will be skipped
+- Verify file is non-zero bytes — a zero-byte Installomator file causes a fatal pre-flight error
 - Test label manually: `sudo /path/to/Installomator.sh <label> DEBUG=1`
 - Check label exists and is spelled correctly
+
+### Missing dependencies
+- If `swiftDialog` is unavailable and cannot be installed, the script exits during pre-flight
+- If `Installomator.sh` is missing, pre-flight logs warnings but selected Installomator items fail when executed
+- If the `jamf` binary is missing, pre-flight logs warnings but selected Jamf policy items fail when executed
 
 ### Selection dialog empty
 - Verify items are configured in arrays
@@ -403,6 +410,6 @@ For issues or questions:
 
 ---
 
-**Version:** 0.0.1a2  
-**Date:** March 27, 2026  
+**Version:** 0.0.1a3  
+**Date:** 27-Mar-2026  
 **Author:** Dan K. Snelson (@dan-snelson)

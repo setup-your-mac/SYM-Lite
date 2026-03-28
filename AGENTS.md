@@ -27,7 +27,8 @@
 - The script processes selected items sequentially. There is no parallel execution layer.
 
 ## Dependencies and external contracts
-- **swiftDialog** is required for interactive mode and is auto-installed or updated if missing/outdated. Minimum required version is `3.0.1.4955`.
+- **swiftDialog** is required for all runs because pre-flight always calls `dialogCheck`, and it is auto-installed or updated if missing/outdated. Minimum required version is `3.0.1.4955`.
+- Because this repo requires swiftDialog 3.x, the effective minimum supported OS is **macOS 15**.
 - **Installomator** is expected at `/Library/Management/AppAutoPatch/Installomator/Installomator.sh` unless `organizationInstallomatorFile` is changed.
 - **Jamf Pro Client** is expected at `/usr/local/bin/jamf` unless `jamfBinary` is changed.
 - **Network access** may be required for:
