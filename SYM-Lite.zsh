@@ -16,6 +16,9 @@
 #
 # HISTORY
 #
+# Version 0.0.1a3, 27-Mar-2026, Dan K. Snelson (@dan-snelson)
+#   - Added additional apps
+#
 # Version 0.0.1a2, 26-Mar-2026, Dan K. Snelson (@dan-snelson)
 #   - Added per-item icons to selection dialog checkboxes
 #   - Changed item array delimiter from colon to space-padded pipe ( | )
@@ -42,7 +45,7 @@ export PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
 setopt NONOMATCH
 
 # Script Version
-scriptVersion="0.0.1a2"
+scriptVersion="0.0.1a3"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -114,6 +117,7 @@ restartPromptEnabled="true"
 installomatorItems=(
     "androidstudio | Android Studio | /Applications/Android Studio.app | https://use2.ics.services.jamfcloud.com/icon/hash_f7021d808263d18f52ba2535ec66d35f8bb24b08ab9bff6aee22ecb319159904"
     "awsvpnclient | AWS VPN Client | /Applications/AWS VPN Client/AWS VPN Client.app | https://usw2.ics.services.jamfcloud.com/icon/hash_1d1bef5523d9f7eca5a45f2db9a63732e85edb5f914220807ca740ba7c4881b9"
+    "bruno | Bruno | /Applications/Bruno.app | https://usw2.ics.services.jamfcloud.com/icon/hash_48501630ad2f5dd5de3e055d6acdda07682895440cad366ee7befac71cab1399"
     "charles | Charles Proxy | /Applications/Charles.app | https://use2.ics.services.jamfcloud.com/icon/hash_59b395ca81889a6d83deda8e6babc5ae4bc5931d36a72b738fe30b84d027593d"
     "docker | Docker | /Applications/Docker.app | https://usw2.ics.services.jamfcloud.com/icon/hash_a344dca5fdc0e86822e8f21ec91088e6591b1e292bdcebdee1281fbd794c2724"
     "jetbrainsintellijidea | IntelliJ IDEA | /Applications/IntelliJ IDEA.app | https://usw2.ics.services.jamfcloud.com/icon/hash_f669d73acc06297e1fc2f65245cfbdace03263f81aebf95444a8360a101b239d"
@@ -133,10 +137,7 @@ jamfPolicyItems=(
 # Logged-in User Variables
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-loggedInUser=$( /bin/echo "show State:/Users/ConsoleUser" | /usr/sbin/scutil | /usr/bin/awk '/Name :/ { print $3 }' )
-loggedInUserFullname=$( /usr/bin/id -F "${loggedInUser}" )
-loggedInUserFirstname=$( /bin/echo "$loggedInUserFullname" | /usr/bin/sed -E 's/^.*, // ; s/([^ ]*).*/\1/' | /usr/bin/sed 's/\(.\{25\}\).*/\1…/' | /usr/bin/awk '{print ( $0 == toupper($0) ? toupper(substr($0,1,1))substr(tolower($0),2) : toupper(substr($0,1,1))substr($0,2) )}' )
-loggedInUserID=$( /usr/bin/id -u "${loggedInUser}" )
+loggedInUser=""
 
 
 
@@ -151,7 +152,7 @@ dialogBinary="/usr/local/bin/dialog"
 dialogAppBundle="/Library/Application Support/Dialog/Dialog.app"
 
 # swiftDialog Inspect Mode JSON File
-dialogInspectModeJSONFile=$( /usr/bin/mktemp -u /var/tmp/dialogJSONFile_InspectMode_${organizationScriptName}.XXXX )
+dialogInspectModeJSONFile=""
 
 
 
@@ -166,7 +167,7 @@ failedItems=()
 completedItems=()
 skippedItems=()
 dialogPID=""
-workDirectory=""
+dialogTemporaryDirectory=""
 
 
 
@@ -191,10 +192,17 @@ function errorOut()     { updateScriptLog "ERROR" "${1}"; }
 function fatal()        { updateScriptLog "FATAL ERROR" "${1}"; exit 10; }
 
 function cleanup() {
-    rm -f "${dialogInspectModeJSONFile}" 2>/dev/null
-    rm -rf "${workDirectory}" 2>/dev/null
-    rm -f /var/tmp/dialogJSONFile_* 2>/dev/null
-    rm -f /var/tmp/dialog.log 2>/dev/null
+    if [[ -n "${dialogInspectModeJSONFile}" && -e "${dialogInspectModeJSONFile}" ]]; then
+        rm -f -- "${dialogInspectModeJSONFile}" 2>/dev/null
+    fi
+
+    if [[ -n "${dialogTemporaryDirectory}" && -d "${dialogTemporaryDirectory}" ]]; then
+        case "${dialogTemporaryDirectory}" in
+            /tmp/*|/var/tmp/*|/private/tmp/*)
+                rm -rf -- "${dialogTemporaryDirectory}" 2>/dev/null
+                ;;
+        esac
+    fi
 }
 trap cleanup EXIT
 
@@ -205,6 +213,22 @@ trap cleanup EXIT
 # Core Helper Functions
 #
 ####################################################################################################
+
+function requireLoggedInUser() {
+    local context="${1:-perform a UI action}"
+
+    if [[ -z "${loggedInUser}" || "${loggedInUser}" == "loginwindow" ]]; then
+        loggedInUser=$( /bin/echo "show State:/Users/ConsoleUser" | /usr/sbin/scutil | /usr/bin/awk '/Name :/ { print $3 }' )
+    fi
+
+    if [[ -z "${loggedInUser}" || "${loggedInUser}" == "loginwindow" ]]; then
+        fatal "No valid logged-in GUI user detected; cannot ${context}."
+    fi
+
+    if ! /usr/bin/id -u "${loggedInUser}" >/dev/null 2>&1; then
+        fatal "Logged-in GUI user '${loggedInUser}' is not resolvable; cannot ${context}."
+    fi
+}
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Run command as logged-in user (thanks, @scriptingosx!)
@@ -392,23 +416,26 @@ function dialogInstall() {
     preFlight "Installing swiftDialog from ${dialogURL}..."
 
     # Create temporary working directory
-    workDirectory=$( basename "$0" )
-    tempDirectory=$( mktemp -d "/private/tmp/$workDirectory.XXXXXX" )
+    dialogTemporaryDirectory=$( mktemp -d "/private/tmp/${organizationScriptName}.XXXXXX" )
+    if [[ -z "${dialogTemporaryDirectory}" || ! -d "${dialogTemporaryDirectory}" ]]; then
+        fatal "Failed to create temporary working directory for swiftDialog installation"
+    fi
 
     # Download the installer package with timeouts
     if ! curl --location --silent --fail --connect-timeout 10 --max-time 60 \
-             "$dialogURL" -o "$tempDirectory/Dialog.pkg"; then
-        rm -Rf "$tempDirectory"
+             "$dialogURL" -o "${dialogTemporaryDirectory}/Dialog.pkg"; then
+        rm -Rf "${dialogTemporaryDirectory}"
+        dialogTemporaryDirectory=""
         fatal "Failed to download swiftDialog package"
     fi
 
     # Verify the download
-    teamID=$(spctl -a -vv -t install "$tempDirectory/Dialog.pkg" 2>&1 | awk '/origin=/ {print $NF }' | tr -d '()')
+    teamID=$(spctl -a -vv -t install "${dialogTemporaryDirectory}/Dialog.pkg" 2>&1 | awk '/origin=/ {print $NF }' | tr -d '()')
 
     # Install the package if Team ID validates
     if [[ "$expectedDialogTeamID" == "$teamID" ]]; then
 
-        installer -pkg "$tempDirectory/Dialog.pkg" -target /
+        installer -pkg "${dialogTemporaryDirectory}/Dialog.pkg" -target /
         sleep 2
         dialogVersion=$( /usr/local/bin/dialog --version )
         preFlight "swiftDialog version ${dialogVersion} installed; proceeding..."
@@ -422,7 +449,8 @@ function dialogInstall() {
     fi
 
     # Remove the temporary working directory when done
-    rm -Rf "$tempDirectory"
+    rm -Rf "${dialogTemporaryDirectory}"
+    dialogTemporaryDirectory=""
 
 }
 
@@ -572,7 +600,6 @@ if [[ ${#installomatorItems[@]} -gt 0 ]]; then
         warning "Installomator items will be skipped"
     elif [[ ! -s "${organizationInstallomatorFile}" ]]; then
         fatal "Installomator at ${organizationInstallomatorFile} is zero bytes"
-        fatal "Installomator items will be skipped"
     else
         preFlight "Installomator found at ${organizationInstallomatorFile}"
     fi
@@ -617,6 +644,11 @@ function createSYMLiteInspectConfig() {
     local totalItems=${#selectedItems[@]}
     local dialogTitle="Installing ${totalItems} Application"
     [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}s"
+
+    dialogInspectModeJSONFile=$( /usr/bin/mktemp "/var/tmp/dialogJSONFile_InspectMode_${organizationScriptName}.XXXXXX" )
+    if [[ -z "${dialogInspectModeJSONFile}" || ! -e "${dialogInspectModeJSONFile}" ]]; then
+        fatal "Failed to create Dialog inspect config file"
+    fi
     
     # Build items array JSON with guiIndex
     local itemsJSON=""
@@ -718,11 +750,11 @@ EOF
         info "Dialog inspect config file created at ${dialogInspectModeJSONFile}"
     fi
     
-    # Validate JSON with jq
-    local jqValidationError
-    jqValidationError=$(/usr/bin/jq empty "${dialogInspectModeJSONFile}" 2>&1)
+    # Validate JSON with built-in macOS tooling
+    local jsonValidationError
+    jsonValidationError=$(/usr/bin/plutil -lint "${dialogInspectModeJSONFile}" 2>&1)
     if [[ $? -ne 0 ]]; then
-        fatal "Dialog inspect config JSON is malformed: ${jqValidationError}"
+        fatal "Dialog inspect config JSON is malformed: ${jsonValidationError}"
     else
         info "Dialog inspect config JSON validated successfully"
     fi
@@ -814,6 +846,10 @@ function parseDialogSelections() {
 function showSelectionDialog() {
     if [[ "${operationMode}" == "silent" ]]; then
         parseOperationsCSV "${operationsCSV}"
+        if [[ ${#selectedItems[@]} -eq 0 ]]; then
+            errorOut "Silent mode: no valid operations selected from operationsCSV"
+            return 1
+        fi
         return 0
     fi
 
@@ -1012,21 +1048,32 @@ function executeJamfPolicy() {
 
 function executeSYMLiteItems() {
     notice "Starting execution of ${#selectedItems[@]} selected items"
-    
-    # Create Inspect Mode configuration
-    notice "Creating Inspect Mode configuration …"
-    if ! createSYMLiteInspectConfig; then
-        fatal "Failed to create Inspect Mode configuration"
+
+    if [[ ${#selectedItems[@]} -eq 0 ]]; then
+        errorOut "No selected items available for execution"
+        return 1
     fi
     
-    # Launch Dialog in background for real-time progress
-    notice "Launching Inspect Mode dialog …"
-    runAsUser "${loggedInUser}" DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --inspect-mode &
-    dialogPID=$!
-    info "Inspect Mode PID: ${dialogPID}"
-    
-    # Give dialog a moment to launch
-    sleep 2
+    if [[ "${operationMode}" != "silent" ]]; then
+        # Create Inspect Mode configuration
+        notice "Creating Inspect Mode configuration …"
+        if ! createSYMLiteInspectConfig; then
+            fatal "Failed to create Inspect Mode configuration"
+        fi
+
+        requireLoggedInUser "launch Inspect Mode"
+
+        # Launch Dialog in background for real-time progress
+        notice "Launching Inspect Mode dialog …"
+        runAsUser "${loggedInUser}" DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --inspect-mode &
+        dialogPID=$!
+        info "Inspect Mode PID: ${dialogPID}"
+
+        # Give dialog a moment to launch
+        sleep 2
+    else
+        info "Silent mode enabled; skipping Inspect Mode UI"
+    fi
     
     # Process each selected item sequentially
     for itemID in "${selectedItems[@]}"; do
@@ -1047,22 +1094,24 @@ function executeSYMLiteItems() {
         fi
     done
     
-    # Wait for Dialog to close (with timeout)
-    info "Waiting for Inspect Mode (PID: ${dialogPID}) to close …"
-    local waitCount=0
-    local maxWait=30
-    while kill -0 "${dialogPID}" 2>/dev/null && (( waitCount < maxWait )); do
-        sleep 1
-        ((waitCount++))
-    done
-    
-    if kill -0 "${dialogPID}" 2>/dev/null; then
-        warning "Dialog did not close after ${maxWait} seconds; terminating"
-        kill "${dialogPID}" 2>/dev/null || true
-        sleep 1
+    if [[ -n "${dialogPID}" ]]; then
+        # Wait for Dialog to close (with timeout)
+        info "Waiting for Inspect Mode (PID: ${dialogPID}) to close …"
+        local waitCount=0
+        local maxWait=30
+        while kill -0 "${dialogPID}" 2>/dev/null && (( waitCount < maxWait )); do
+            sleep 1
+            ((waitCount++))
+        done
+
+        if kill -0 "${dialogPID}" 2>/dev/null; then
+            warning "Dialog did not close after ${maxWait} seconds; terminating"
+            kill "${dialogPID}" 2>/dev/null || true
+            sleep 1
+        fi
+
+        info "Inspect Mode closed."
     fi
-    
-    info "Inspect Mode closed."
     
     notice "Execution complete: ${#completedItems[@]} completed, ${#skippedItems[@]} skipped, ${#failedItems[@]} failed"
 }
@@ -1167,6 +1216,7 @@ function executeRestartAction() {
             return 1
             ;;
         "Restart Confirm"|*)
+            requireLoggedInUser "send restart command"
             if runAsUser "${loggedInUser}" /usr/bin/osascript -e 'tell app "loginwindow" to «event aevtrrst»' >>"${scriptLog}" 2>&1; then
                 notice "Restart command '${effectiveRestartMode}' sent for ${loggedInUser}."
                 return 0
@@ -1218,11 +1268,15 @@ notice "Configuration: ${#installomatorItems[@]} Installomator items, ${#jamfPol
 notice "Operation mode: ${operationMode}"
 
 # Phase 2: Show selection dialog
-showSelectionDialog
+if ! showSelectionDialog; then
+    fatal "No valid operations were selected; exiting."
+fi
 separateSelectedItemsByType
 
 # Phase 3 & 4: Execute selected items via Inspect Mode
-executeSYMLiteItems
+if ! executeSYMLiteItems; then
+    fatal "Failed to execute selected items"
+fi
 
 # Skip completion and restart dialogs if all selected items were already installed
 if [[ ${#completedItems[@]} -eq 0 && ${#failedItems[@]} -eq 0 ]]; then
@@ -1232,8 +1286,12 @@ if [[ ${#completedItems[@]} -eq 0 && ${#failedItems[@]} -eq 0 ]]; then
 fi
 
 # Phase 5: Display completion and prompt for restart
-showCompletionDialog
-promptForRestart
+if [[ "${operationMode}" == "silent" ]]; then
+    info "Silent mode enabled; skipping completion dialog and restart prompt"
+else
+    showCompletionDialog
+    promptForRestart
+fi
 
 info "SYM-Lite execution complete - Total Elapsed Time: $(formattedElapsedTime)"
 quitScript 0

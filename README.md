@@ -104,7 +104,9 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,googlechrome"
 **Silent mode behavior:**
 - No selection dialog
 - CSV list parsed directly
+- No Inspect Mode or completion dialogs
 - No restart prompt
+- Exits with an error if the CSV contains no valid item IDs
 - Suitable for automated deployment
 
 ---
@@ -142,23 +144,24 @@ SELECTION INTERFACE
   └─ Separate items by type
        ↓
 INSPECT MODE CONFIGURATION
+  ├─ Interactive mode only
   ├─ Build unified JSON config
   ├─ Merge Installomator + Jamf items
   ├─ Add cachePaths for download detection
-  └─ Validate JSON with jq
+  └─ Validate JSON with plutil
        ↓
 EXECUTION ENGINE
-  ├─ Launch Inspect Mode dialog (background)
-  │   └─ Monitors file system for validation paths
+  ├─ Interactive mode launches Inspect Mode dialog (background)
+  │   └─ Silent mode logs progress without UI
   ├─ Process items sequentially
   │   ├─ Installomator: executeInstallomatorLabel()
   │   └─ Jamf: executeJamfPolicy()
-  ├─ Inspect Mode auto-detects when paths appear
-  └─ Wait for dialog close
+  ├─ Interactive mode waits for Inspect Mode to close
+  └─ Silent mode exits when execution completes
        ↓
 COMPLETION & RESTART
-  ├─ Show completion dialog (success/errors)
-  └─ Prompt for restart (if enabled)
+  ├─ Interactive mode shows completion dialog (success/errors)
+  └─ Interactive mode prompts for restart (if enabled)
 ```
 
 ---
@@ -214,7 +217,7 @@ swiftDialog's Inspect Mode uses **dual monitoring** for comprehensive progress t
 
 ## Restart Prompt Behavior
 
-After all items complete and the completion dialog closes, SYM-Lite prompts for a restart (if `restartPromptEnabled="true"`).
+In interactive mode, after all items complete and the completion dialog closes, SYM-Lite prompts for a restart (if `restartPromptEnabled="true"`).
 
 **Restart Prompt Dialog:**
 - Title: "Restart Recommended"
@@ -235,7 +238,7 @@ After all items complete and the completion dialog closes, SYM-Lite prompts for 
 
 **Silent Mode:**
 - Restart prompt **never shows** in silent mode
-- Script exits after completion dialog
+- Script exits when item execution completes
 - Suitable for unattended deployment
 
 **Disable Restart Prompt:**
@@ -279,7 +282,7 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 | `installomatorLog` | `/var/log/Installomator.log` | Installomator log path for monitoring |
 | `jamfBinary` | `/usr/local/bin/jamf` | Path to jamf binary |
 | `organizationOverlayiconURL` | swiftDialog logo | Overlay icon URL |
-| `mainDialogIcon` | `SF=gearshape.2...` | Main dialog icon |
+| `mainDialogIcon` | GitHub raw `SYM_icon.png` URL | Main dialog icon |
 | `fontSize` | `"14"` | Dialog message font size |
 | `restartPromptEnabled` | `"true"` | Show restart prompt after completion |
 | `scriptLog` | `/var/log/...log` | Client-side log path |
