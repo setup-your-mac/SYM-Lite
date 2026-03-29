@@ -107,7 +107,7 @@ sudo ~/Downloads/SYM-Lite.zsh
 1. Selection dialog appears with all configured items
 2. User selects one or more items using checkboxes
 3. Inspect Mode dialog launches showing real-time progress
-4. Completion dialog shows results
+4. Completion report shows one row per selected item
 5. Optional restart prompt
 
 **Interactive mode requirements:**
@@ -189,8 +189,8 @@ EXECUTION ENGINE
   └─ Silent mode exits when execution completes
        ↓
 COMPLETION & RESTART
-  ├─ Interactive mode shows completion dialog (success/errors)
-  └─ Interactive mode prompts for restart (if enabled)
+  ├─ Interactive mode shows a completion report for selected items
+  └─ Interactive mode prompts for restart (if enabled and something was newly installed)
 ```
 
 ---
@@ -246,7 +246,7 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 
 ## Restart Prompt Behavior
 
-In interactive mode, after all items complete and the completion dialog closes, SYM-Lite prompts for a restart (if `restartPromptEnabled="true"`).
+In interactive mode, after all items complete and the completion report closes, SYM-Lite prompts for a restart (if `restartPromptEnabled="true"` and something was newly installed).
 
 **Restart Prompt Dialog:**
 - Title: "Restart Recommended"
@@ -269,6 +269,10 @@ In interactive mode, after all items complete and the completion dialog closes, 
 - Restart prompt **never shows** in silent mode
 - Script exits when item execution completes
 - Suitable for unattended deployment
+
+**All Items Already Installed:**
+- Interactive mode still shows the completion report
+- Restart prompt does not show
 
 **Disable Restart Prompt:**
 Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in all modes.
