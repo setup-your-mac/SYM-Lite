@@ -16,8 +16,8 @@
 #
 # HISTORY
 #
-# Version 0.0.1a3, 27-Mar-2026, Dan K. Snelson (@dan-snelson)
-#   - Added additional apps to Installomator items list.
+# Version 1.0.0b1, 28-Mar-2026, Dan K. Snelson (@dan-snelson)
+#   - Initial beta release
 #
 ####################################################################################################
 
@@ -33,7 +33,7 @@ export PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
 setopt NONOMATCH
 
 # Script Version
-scriptVersion="0.0.1a3"
+scriptVersion="1.0.0b1"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -120,15 +120,6 @@ jamfPolicyItems=(
 )
 
 
-
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Logged-in User Variables
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
-loggedInUser=""
-
-
-
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # swiftDialog Variables
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -202,12 +193,27 @@ trap cleanup EXIT
 #
 ####################################################################################################
 
+function currentLoggedInUser() {
+    local shouldLog="${1:-true}"
+
+    loggedInUser=$( /bin/echo "show State:/Users/ConsoleUser" | /usr/sbin/scutil | /usr/bin/awk '/Name :/ { print $3 }' )
+
+    if [[ "${shouldLog}" == "true" ]]; then
+        preFlight "Current Logged-in User: ${loggedInUser}"
+    fi
+}
+
+function updateLoggedInUserDetails() {
+    loggedInUserFullname=$( /usr/bin/id -F "${loggedInUser}" )
+    loggedInUserFirstname=$( /bin/echo "${loggedInUserFullname}" | /usr/bin/sed -E 's/^.*, // ; s/([^ ]*).*/\1/' | /usr/bin/sed 's/\(.\{25\}\).*/\1…/' | /usr/bin/awk '{print ( $0 == toupper($0) ? toupper(substr($0,1,1))substr(tolower($0),2) : toupper(substr($0,1,1))substr($0,2) )}' )
+    loggedInUserID=$( /usr/bin/id -u "${loggedInUser}" )
+    loggedInUserHomeDirectory=$( /usr/bin/dscl . read "/Users/${loggedInUser}" NFSHomeDirectory | /usr/bin/awk -F ' ' '{ print $2 }' )
+}
+
 function requireLoggedInUser() {
     local context="${1:-perform a UI action}"
 
-    if [[ -z "${loggedInUser}" || "${loggedInUser}" == "loginwindow" ]]; then
-        loggedInUser=$( /bin/echo "show State:/Users/ConsoleUser" | /usr/sbin/scutil | /usr/bin/awk '/Name :/ { print $3 }' )
-    fi
+    currentLoggedInUser "false"
 
     if [[ -z "${loggedInUser}" || "${loggedInUser}" == "loginwindow" ]]; then
         fatal "No valid logged-in GUI user detected; cannot ${context}."
@@ -216,6 +222,8 @@ function requireLoggedInUser() {
     if ! /usr/bin/id -u "${loggedInUser}" >/dev/null 2>&1; then
         fatal "Logged-in GUI user '${loggedInUser}' is not resolvable; cannot ${context}."
     fi
+
+    updateLoggedInUserDetails
 }
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -301,7 +309,7 @@ function getAllItemIDs() {
         allIDs+=("${parts[1]}")
     done
     
-    echo "${allIDs[@]}"
+    print -r -- "${allIDs[@]}"
 }
 
 
@@ -319,7 +327,7 @@ function getItemType() {
     for item in "${installomatorItems[@]}"; do
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
-            echo "installomator"
+            print -r -- "installomator"
             return 0
         fi
     done
@@ -328,12 +336,12 @@ function getItemType() {
     for item in "${jamfPolicyItems[@]}"; do
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
-            echo "jamf"
+            print -r -- "jamf"
             return 0
         fi
     done
     
-    echo ""
+    print -r -- ""
     return 1
 }
 
@@ -352,7 +360,7 @@ function getItemConfig() {
     for item in "${installomatorItems[@]}"; do
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
-            echo "${item}"
+            print -r -- "${item}"
             return 0
         fi
     done
@@ -361,12 +369,12 @@ function getItemConfig() {
     for item in "${jamfPolicyItems[@]}"; do
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
-            echo "${item}"
+            print -r -- "${item}"
             return 0
         fi
     done
     
-    echo ""
+    print -r -- ""
     return 1
 }
 
@@ -579,6 +587,40 @@ dialogCheck
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Pre-flight Check: Validate Logged-in System Accounts (Interactive Mode)
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+if [[ "${operationMode}" != "silent" ]]; then
+    maxWait=120
+    counter=0
+
+    preFlight "Check for Logged-in System Accounts …"
+    currentLoggedInUser
+
+    until [[ -n "${loggedInUser}" && "${loggedInUser}" != "loginwindow" ]]; do
+        if [[ "${counter}" -ge "${maxWait}" ]]; then
+            fatal "No valid user logged in after ${maxWait} seconds; exiting."
+        fi
+        sleep 1
+        ((counter++))
+        currentLoggedInUser
+        preFlight "Logged-in User Counter: ${counter}"
+    done
+
+    if ! /usr/bin/id -u "${loggedInUser}" >/dev/null 2>&1; then
+        fatal "Logged-in GUI user '${loggedInUser}' is not resolvable; exiting."
+    fi
+
+    updateLoggedInUserDetails
+    preFlight "Current Logged-in User First Name (ID): ${loggedInUserFirstname} (${loggedInUserID})"
+    preFlight "Validated logged-in GUI user '${loggedInUser}'."
+else
+    preFlight "Silent mode enabled; skipping logged-in GUI user pre-flight check."
+fi
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Pre-flight Check: Validate Installomator (if Installomator items configured)
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -717,7 +759,6 @@ function createSYMLiteInspectConfig() {
         "Please wait while items are being processed.",
         "Each item completes when its validation path appears.",
         "This process may take several minutes.",
-        "You can minimize this window if needed.",
         "The installation will complete automatically.",
         "A restart may be required after completion."
     ],
@@ -738,9 +779,10 @@ EOF
         info "Dialog inspect config file created at ${dialogInspectModeJSONFile}"
     fi
     
-    # Validate JSON with built-in macOS tooling
+    # Validate JSON with built-in macOS tooling.
+    # `plutil -lint` only validates property lists, not raw JSON.
     local jsonValidationError
-    jsonValidationError=$(/usr/bin/plutil -lint "${dialogInspectModeJSONFile}" 2>&1)
+    jsonValidationError=$(/usr/bin/plutil -convert json -o /dev/null "${dialogInspectModeJSONFile}" 2>&1)
     if [[ $? -ne 0 ]]; then
         fatal "Dialog inspect config JSON is malformed: ${jsonValidationError}"
     else
@@ -748,6 +790,26 @@ EOF
     fi
 
     return 0
+}
+
+function prepareInspectConfigForUser() {
+    if [[ -z "${dialogInspectModeJSONFile}" || ! -e "${dialogInspectModeJSONFile}" ]]; then
+        fatal "Dialog inspect config file is unavailable for user handoff."
+    fi
+
+    if [[ -z "${loggedInUser}" ]]; then
+        fatal "No logged-in user available to receive Dialog inspect config."
+    fi
+
+    if ! /usr/sbin/chown "${loggedInUser}" "${dialogInspectModeJSONFile}" 2>/dev/null; then
+        fatal "Failed to set ownership on Dialog inspect config for ${loggedInUser}."
+    fi
+
+    if ! /bin/chmod 600 "${dialogInspectModeJSONFile}" 2>/dev/null; then
+        fatal "Failed to set permissions on Dialog inspect config for ${loggedInUser}."
+    fi
+
+    info "Dialog inspect config handed off to ${loggedInUser}."
 }
 
 
@@ -841,6 +903,8 @@ function showSelectionDialog() {
         return 0
     fi
 
+    requireLoggedInUser "display selection dialog"
+
     local checkboxArgs=()
     local baseMessage
     local warningMessage=""
@@ -849,7 +913,7 @@ function showSelectionDialog() {
     local rc
 
     # Build message
-    baseMessage="Select one or more applications to install."
+    baseMessage="**$(date +'Happy %A,') ${loggedInUserFirstname}!**\n\nSelect one or more applications to install."
 
     # Build unified checkbox list (Installomator + Jamf, sorted together by display name)
     local -a allSortKeys=()
@@ -1043,13 +1107,15 @@ function executeSYMLiteItems() {
     fi
     
     if [[ "${operationMode}" != "silent" ]]; then
+        requireLoggedInUser "launch Inspect Mode"
+
         # Create Inspect Mode configuration
         notice "Creating Inspect Mode configuration …"
         if ! createSYMLiteInspectConfig; then
             fatal "Failed to create Inspect Mode configuration"
         fi
 
-        requireLoggedInUser "launch Inspect Mode"
+        prepareInspectConfigForUser
 
         # Launch Dialog in background for real-time progress
         notice "Launching Inspect Mode dialog …"
@@ -1140,6 +1206,8 @@ trap handleInterruption SIGINT SIGTERM
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 function showCompletionDialog() {
+    requireLoggedInUser "display completion dialog"
+
     local dialogTitle
     local dialogMessage
     local dialogIcon
@@ -1219,6 +1287,8 @@ function promptForRestart() {
     if [[ "${restartPromptEnabled}" != "true" ]] || [[ "${operationMode}" == "silent" ]]; then
         return 0
     fi
+
+    requireLoggedInUser "display restart prompt"
     
     local rc
     

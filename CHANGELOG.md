@@ -2,6 +2,9 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.0.0b1 - 28-Mar-2026
+- Initial beta release
+
 ## 0.0.1a3 - 27-Mar-2026
 - Added additional apps to Installomator items list.
 

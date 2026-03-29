@@ -1,11 +1,34 @@
-# SYM-Lite Quick Start Guide
+# SYM-Lite
 
-## Overview
-SYM-Lite is a lean, purpose-built script for executing Jamf Pro Policy Custom Triggers and Installomator labels through a unified swiftDialog selection interface.
+> **SYM-Lite** is a lean, purpose-built script for executing Jamf Pro Policy [Custom Triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies) _and / or_ [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) through a unified [swiftDialog](https://swiftdialog.app) selection interface
 
-**Version:** 0.0.1a3  
-**File:** `SYM-Lite.zsh`  
-**Status:** ✓ Syntax validated, includes logMonitor support
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="images/SYML-00001.png" alt="SYM-Lite screenshot 1" width="300">
+    </td>
+    <td align="center">
+      <img src="images/SYML-00002.png" alt="SYM-Lite screenshot 2" width="300">
+    </td>
+    <td align="center">
+      <img src="images/SYML-00003.png" alt="SYM-Lite screenshot 3" width="300">
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="images/SYML-00004.png" alt="SYM-Lite screenshot 4" width="300">
+    </td>
+    <td align="center">
+      <img src="images/SYML-00005.png" alt="SYM-Lite screenshot 5" width="300">
+    </td>
+    <td align="center">
+      <img src="images/SYML-00006.png" alt="SYM-Lite screenshot 6" width="300">
+    </td>
+  </tr>
+</table>
+
 
 ---
 
@@ -24,7 +47,7 @@ SYM-Lite is a lean, purpose-built script for executing Jamf Pro Policy Custom Tr
 
 ---
 
-## Configuration
+## Quick Start Guide
 
 ### Adding Installomator Items
 
@@ -115,18 +138,17 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,googlechrome"
 
 ### Required
 - **macOS** 15+ (required by swiftDialog 3.x)
-- **Root access** — Script must run as root
+- **Root access** — Script must run as `root`
 - **swiftDialog** 3.0.1.4955+ (auto-installed if missing)
 
 ### External Command Dependencies
 - **Installomator** — Required for selected Installomator items to succeed
-  - Default path: `/Library/Management/AppAutoPatch/Installomator/Installomator.sh`
-  - Edit `organizationInstallomatorFile` variable to customize
+  - Default path: `/Library/Management/AppAutoPatch/Installomator/Installomator.sh` [:link:](https://github.com/App-Auto-Patch/App-Auto-Patch/wiki)
+    - Edit `organizationInstallomatorFile` variable to customize
   - If the configured file exists but is zero bytes, pre-flight exits with a fatal error
   - If the binary is missing, pre-flight logs warnings and selected Installomator items will fail at execution time
-- **Jamf Pro Client** — Required for selected Jamf policy items to succeed
+- **Jamf Pro Binary** — Required for selected Jamf policy items to succeed
   - Default path: `/usr/local/bin/jamf`
-  - Edit `jamfBinary` variable to customize
   - If the binary is missing, pre-flight logs warnings and selected Jamf policy items will fail at execution time
 
 ---
@@ -170,7 +192,7 @@ COMPLETION & RESTART
 
 ## How Inspect Mode Works
 
-swiftDialog's Inspect Mode uses **dual monitoring** for comprehensive progress tracking:
+swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) uses **dual monitoring** for comprehensive progress tracking:
 
 ### For Installomator Labels (Rich Status)
 
@@ -294,6 +316,7 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 ## Logging
 
 **Primary Log:** `/var/log/org.churchofjesuschrist.log`
+- Set `scriptLog` to your organization's preferred log path
 
 **Log Levels:**
 - `[PRE-FLIGHT]` — Initial checks
@@ -401,7 +424,9 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 
 ## Support
 
-For issues or questions:
+> Community-supplied, best-effort support is available on the [Mac Admins Slack](https://www.macadmins.org/) (free, registration required) [#setup-your-mac](https://slack.com/app_redirect?channel=C04FRRN3281) channel, or you can open an [issue](https://github.com/setup-your-mac/SYM-Lite/issues).
+
+### Troubleshooting:
 - Review script logs: `/var/log/org.churchofjesuschrist.log`
 - Check syntax: `zsh -n /path/to/SYM-Lite.zsh`
 - Validate swiftDialog: `/usr/local/bin/dialog --version`
@@ -410,6 +435,6 @@ For issues or questions:
 
 ---
 
-**Version:** 0.0.1a3  
-**Date:** 27-Mar-2026  
+**Version:** 1.0.0b1  
+**Date:** 28-Mar-2026  
 **Author:** Dan K. Snelson (@dan-snelson)

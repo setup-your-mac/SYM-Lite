@@ -1,6 +1,6 @@
 # SYM-Lite — Agent Instructions
 
-> **Author**: Dan K. Snelson | **Version**: 0.0.1a3 | **Language**: zsh (Shell) | **Platform**: macOS only | **License**: MIT
+> **Author**: Dan K. Snelson | **Version**: 1.0.0b1 | **Language**: zsh (Shell) | **Platform**: macOS only | **License**: MIT
 
 ## Big picture
 - SYM-Lite is a macOS-only, root-run script that unifies Installomator label execution and Jamf Pro policy triggers behind a single swiftDialog-driven workflow.
