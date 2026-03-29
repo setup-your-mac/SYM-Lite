@@ -7,7 +7,7 @@
 #
 # - Lean, purpose-built script for executing Jamf Pro Policy Custom Triggers and Installomator labels
 # - User selects which items to install/execute via swiftDialog selection UI
-# - Monitors execution progress via swiftDialog 3.0.0 Inspect Mode
+# - Monitors execution progress via swiftDialog Inspect Mode
 # - No user input prompts beyond selection (no asset tag, computer name, etc.)
 #
 # https://snelson.us/sym
@@ -18,6 +18,8 @@
 #
 # Version 1.0.0b1, 28-Mar-2026, Dan K. Snelson (@dan-snelson)
 #   - Initial beta release
+#   - Added interactive logged-in GUI user validation and per-user Inspect Mode config handoff
+#   - Improved Inspect Mode JSON validation
 #
 ####################################################################################################
 
@@ -31,6 +33,7 @@
 
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
 setopt NONOMATCH
+setopt TYPESET_SILENT
 
 # Script Version
 scriptVersion="1.0.0b1"
@@ -102,7 +105,7 @@ restartPromptEnabled="true"
 
 # Installomator Items
 # Format: "label | Display Name | Validation Path | Icon URL"
-installomatorItems=(
+installomatorLabels=(
     "androidstudio | Android Studio | /Applications/Android Studio.app | https://use2.ics.services.jamfcloud.com/icon/hash_f7021d808263d18f52ba2535ec66d35f8bb24b08ab9bff6aee22ecb319159904"
     "awsvpnclient | AWS VPN Client | /Applications/AWS VPN Client/AWS VPN Client.app | https://usw2.ics.services.jamfcloud.com/icon/hash_1d1bef5523d9f7eca5a45f2db9a63732e85edb5f914220807ca740ba7c4881b9"
     "bruno | Bruno | /Applications/Bruno.app | https://usw2.ics.services.jamfcloud.com/icon/hash_48501630ad2f5dd5de3e055d6acdda07682895440cad366ee7befac71cab1399"
@@ -298,7 +301,7 @@ function getAllItemIDs() {
     local allIDs=()
     
     # Add Installomator labels
-    for item in "${installomatorItems[@]}"; do
+    for item in "${installomatorLabels[@]}"; do
         local parts=("${(@s: | :)item}")
         allIDs+=("${parts[1]}")
     done
@@ -323,8 +326,8 @@ function getAllItemIDs() {
 function getItemType() {
     local itemID="$1"
     
-    # Check Installomator items
-    for item in "${installomatorItems[@]}"; do
+    # Check Installomator labels
+    for item in "${installomatorLabels[@]}"; do
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
             print -r -- "installomator"
@@ -356,8 +359,8 @@ function getItemType() {
 function getItemConfig() {
     local itemID="$1"
     
-    # Check Installomator items
-    for item in "${installomatorItems[@]}"; do
+    # Check Installomator labels
+    for item in "${installomatorLabels[@]}"; do
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
             print -r -- "${item}"
@@ -621,13 +624,13 @@ fi
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Pre-flight Check: Validate Installomator (if Installomator items configured)
+# Pre-flight Check: Validate Installomator (if Installomator labels configured)
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-if [[ ${#installomatorItems[@]} -gt 0 ]]; then
+if [[ ${#installomatorLabels[@]} -gt 0 ]]; then
     if [[ ! -x "${organizationInstallomatorFile}" ]]; then
         warning "Installomator not found at ${organizationInstallomatorFile}"
-        warning "Installomator items will be skipped"
+        warning "Installomator labels will be skipped"
     elif [[ ! -s "${organizationInstallomatorFile}" ]]; then
         fatal "Installomator at ${organizationInstallomatorFile} is zero bytes"
     else
@@ -917,7 +920,7 @@ function showSelectionDialog() {
 
     # Build unified checkbox list (Installomator + Jamf, sorted together by display name)
     local -a allSortKeys=()
-    for item in "${installomatorItems[@]}"; do
+    for item in "${installomatorLabels[@]}"; do
         local parts=("${(@s: | :)item}")
         allSortKeys+=("${parts[2]} | installomator | ${item}")
     done
@@ -1119,7 +1122,7 @@ function executeSYMLiteItems() {
 
         # Launch Dialog in background for real-time progress
         notice "Launching Inspect Mode dialog …"
-        runAsUser "${loggedInUser}" DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --inspect-mode &
+        runAsUser "${loggedInUser}" /usr/bin/env DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --inspect-mode &
         dialogPID=$!
         info "Inspect Mode PID: ${dialogPID}"
 
@@ -1322,7 +1325,7 @@ function promptForRestart() {
 ####################################################################################################
 
 notice "SYM-Lite initialized successfully"
-notice "Configuration: ${#installomatorItems[@]} Installomator items, ${#jamfPolicyItems[@]} Jamf policy items"
+notice "Configuration: ${#installomatorLabels[@]} Installomator labels, ${#jamfPolicyItems[@]} Jamf policy items"
 notice "Operation mode: ${operationMode}"
 
 # Phase 2: Show selection dialog

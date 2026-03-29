@@ -49,19 +49,19 @@
 
 ## Quick Start Guide
 
-### Adding Installomator Items
+### Adding Installomator Labels
 
-Edit the `installomatorItems` array near the top of `SYM-Lite.zsh`:
+Edit the `installomatorLabels` array near the top of `SYM-Lite.zsh`:
 
 ```zsh
-installomatorItems=(
+installomatorLabels=(
     "label | Display Name | Validation Path | Icon URL"
 )
 ```
 
 **Example:**
 ```zsh
-installomatorItems=(
+installomatorLabels=(
     "microsoftword | Microsoft Word | /Applications/Microsoft Word.app | https://icon.url"
     "googlechrome | Google Chrome | /Applications/Google Chrome.app | https://icon.url"
     "zoom | Zoom | /Applications/zoom.us.app | https://icon.url"
@@ -110,6 +110,11 @@ sudo ~/Downloads/SYM-Lite.zsh
 4. Completion dialog shows results
 5. Optional restart prompt
 
+**Interactive mode requirements:**
+- Requires an active logged-in GUI user
+- Waits up to 120 seconds for a valid console user before exiting
+- If the Mac is at the login window or otherwise headless, use `silent` mode instead
+
 ### Silent Mode
 
 Run with Jamf parameters or direct positional arguments:
@@ -142,11 +147,11 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,googlechrome"
 - **swiftDialog** 3.0.1.4955+ (auto-installed if missing)
 
 ### External Command Dependencies
-- **Installomator** — Required for selected Installomator items to succeed
+- **Installomator** — Required for selected Installomator labels to succeed
   - Default path: `/Library/Management/AppAutoPatch/Installomator/Installomator.sh` [:link:](https://github.com/App-Auto-Patch/App-Auto-Patch/wiki)
     - Edit `organizationInstallomatorFile` variable to customize
   - If the configured file exists but is zero bytes, pre-flight exits with a fatal error
-  - If the binary is missing, pre-flight logs warnings and selected Installomator items will fail at execution time
+  - If the binary is missing, pre-flight logs warnings and selected Installomator labels will fail at execution time
 - **Jamf Pro Binary** — Required for selected Jamf policy items to succeed
   - Default path: `/usr/local/bin/jamf`
   - If the binary is missing, pre-flight logs warnings and selected Jamf policy items will fail at execution time
@@ -366,8 +371,13 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 
 ### Missing dependencies
 - If `swiftDialog` is unavailable and cannot be installed, the script exits during pre-flight
-- If `Installomator.sh` is missing, pre-flight logs warnings but selected Installomator items fail when executed
+- If `Installomator.sh` is missing, pre-flight logs warnings but selected Installomator labels fail when executed
 - If the `jamf` binary is missing, pre-flight logs warnings but selected Jamf policy items fail when executed
+
+### Interactive mode exits before showing dialogs
+- Verify a real user is logged in at the macOS desktop
+- Interactive mode waits up to 120 seconds for a valid console user, then exits
+- If the Mac is at the login window or running headless, use `silent` mode instead
 
 ### Selection dialog empty
 - Verify items are configured in arrays
@@ -386,7 +396,7 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 ## Testing Checklist
 
 ### Before Production
-- [ ] Edit `installomatorItems` array with organization's apps
+- [ ] Edit `installomatorLabels` array with organization's apps
 - [ ] Edit `jamfPolicyItems` array with organization's policies
 - [ ] Update icon URLs to organization's icons
 - [ ] Verify Installomator path matches environment
