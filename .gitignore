@@ -26,3 +26,9 @@ Icon?
 .zcompdump*
 .zcompcache/
 *.zwc
+
+# Local deployment script (contains versioning logic)
+.deploySYMLite.zsh
+
+# Version tracking (local only)
+VERSION.txt
