@@ -42,7 +42,7 @@
 ✓ **Log monitoring** — Parses Installomator.log for intermediate states (downloading, installing, verifying)  
 ✓ **Path-based validation** — Pre/post-execution checks via file system monitoring  
 ✓ **Cache monitoring** — Detects in-progress downloads  
-✓ **Completion dialogs** — Success/failure summary and restart prompt (skipped when all items already installed)  
+✓ **Completion dialogs** — Success/failure summary and restart prompt  
 ✓ **Graceful interruption** — Clean shutdown on SIGINT/SIGTERM with 30-second timeout  
 
 ---
