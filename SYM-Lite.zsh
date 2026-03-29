@@ -16,10 +16,10 @@
 #
 # HISTORY
 #
-# Version 1.0.0b1, 28-Mar-2026, Dan K. Snelson (@dan-snelson)
-#   - Initial beta release
-#   - Added interactive logged-in GUI user validation and per-user Inspect Mode config handoff
-#   - Improved Inspect Mode JSON validation
+# Version 1.0.0b2, 29-Mar-2026, Dan K. Snelson (@dan-snelson)
+#   - Replaced the plain completion dialog with a richer, end-user-facing software results report
+#   - Added dynamic completion report list items sorted alphabetically by software name
+#   - Updated interactive all-skipped behavior to show the completion report while still skipping restart
 #
 ####################################################################################################
 
@@ -36,7 +36,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.0.0b1"
+scriptVersion="1.0.0b2"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -100,10 +100,9 @@ restartPromptEnabled="true"
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Item Configuration Arrays
-# Format: "identifier | displayName | validationPath | iconURL"
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-# Installomator Items
+# Installomator Labels
 # Format: "label | Display Name | Validation Path | Icon URL"
 installomatorLabels=(
     "androidstudio | Android Studio | /Applications/Android Studio.app | https://use2.ics.services.jamfcloud.com/icon/hash_f7021d808263d18f52ba2535ec66d35f8bb24b08ab9bff6aee22ecb319159904"
@@ -115,7 +114,7 @@ installomatorLabels=(
     "visualstudiocode | Visual Studio Code | /Applications/Visual Studio Code.app | https://use2.ics.services.jamfcloud.com/icon/hash_532094f99f6130f325a97ed6421d09d2a416e269f284304d39c21020565056ed"
 )
 
-# Jamf Pro Policy Items
+# Jamf Pro Policies
 # Format: "trigger | Display Name | Validation Path | Icon URL"
 jamfPolicyItems=(
     "appleXcode | Xcode | /Applications/Xcode.app | https://usw2.ics.services.jamfcloud.com/icon/hash_583afb5af440479d642b3c35ec4ec3ad06c74ec814dba9af84e4e69202edf62a"
@@ -148,6 +147,8 @@ selectedJamfPolicies=()
 failedItems=()
 completedItems=()
 skippedItems=()
+completionReportRecords=()
+completionDialogJSONFile=""
 dialogPID=""
 dialogTemporaryDirectory=""
 
@@ -176,6 +177,12 @@ function fatal()        { updateScriptLog "FATAL ERROR" "${1}"; exit 10; }
 function cleanup() {
     if [[ -n "${dialogInspectModeJSONFile}" && -e "${dialogInspectModeJSONFile}" ]]; then
         rm -f -- "${dialogInspectModeJSONFile}" 2>/dev/null
+        dialogInspectModeJSONFile=""
+    fi
+
+    if [[ -n "${completionDialogJSONFile}" && -e "${completionDialogJSONFile}" ]]; then
+        rm -f -- "${completionDialogJSONFile}" 2>/dev/null
+        completionDialogJSONFile=""
     fi
 
     if [[ -n "${dialogTemporaryDirectory}" && -d "${dialogTemporaryDirectory}" ]]; then
@@ -379,6 +386,78 @@ function getItemConfig() {
     
     print -r -- ""
     return 1
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Completion Report Helpers
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function escapeJSONString() {
+    local value="$1"
+
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    value="${value//$'\n'/\\n}"
+    value="${value//$'\r'/\\r}"
+    value="${value//$'\t'/\\t}"
+
+    print -r -- "${value}"
+}
+
+function addCompletionReportRecord() {
+    local displayName="$1"
+    local statusKey="$2"
+    local dialogStatus="$3"
+    local iconURL="$4"
+    local subtitle="$5"
+    local statusText="$6"
+
+    [[ -z "${iconURL}" ]] && iconURL="${mainDialogIcon}"
+
+    completionReportRecords+=("${displayName}"$'\t'"${statusKey}"$'\t'"${dialogStatus}"$'\t'"${iconURL}"$'\t'"${subtitle}"$'\t'"${statusText}")
+}
+
+function buildCompletionReportListItemsJSON() {
+    if [[ ${#completionReportRecords[@]} -eq 0 ]]; then
+        print -r -- "[]"
+        return 0
+    fi
+
+    local -a sortedRecords
+    sortedRecords=("${(@f)$(printf '%s\n' "${completionReportRecords[@]}" | LC_ALL=C sort -f)}")
+
+    local record=""
+    local displayName=""
+    local statusKey=""
+    local dialogStatus=""
+    local iconURL=""
+    local subtitle=""
+    local statusText=""
+    local escapedDisplayName=""
+    local escapedIconURL=""
+    local escapedSubtitle=""
+    local escapedStatusText=""
+    local listItemsJSON=""
+    local separator=""
+
+    for record in "${sortedRecords[@]}"; do
+        IFS=$'\t' read -r displayName statusKey dialogStatus iconURL subtitle statusText <<< "${record}"
+
+        escapedDisplayName=$(escapeJSONString "${displayName}")
+        escapedIconURL=$(escapeJSONString "${iconURL}")
+        escapedSubtitle=$(escapeJSONString "${subtitle}")
+        escapedStatusText=$(escapeJSONString "${statusText}")
+
+        listItemsJSON="${listItemsJSON}${separator}
+        {\"title\":\"${escapedDisplayName}\",\"subtitle\":\"${escapedSubtitle}\",\"icon\":\"${escapedIconURL}\",\"status\":\"${dialogStatus}\",\"statustext\":\"${escapedStatusText}\",\"iconalpha\":1}"
+        separator=","
+    done
+
+    print -r -- "[
+${listItemsJSON}
+    ]"
 }
 
 
@@ -770,7 +849,7 @@ function createSYMLiteInspectConfig() {
     "button1text": "Please wait...",
     "button1disabled": true,
     "autoEnableButton": true,
-    "autoEnableButtonText": "Close",
+    "autoEnableButtonText": "Review Results",
     "items": [
         ${itemsJSON}
     ]
@@ -815,7 +894,25 @@ function prepareInspectConfigForUser() {
     info "Dialog inspect config handed off to ${loggedInUser}."
 }
 
+function prepareCompletionDialogConfigForUser() {
+    if [[ -z "${completionDialogJSONFile}" || ! -e "${completionDialogJSONFile}" ]]; then
+        fatal "Completion dialog config file is unavailable for user handoff."
+    fi
 
+    if [[ -z "${loggedInUser}" ]]; then
+        fatal "No logged-in user available to receive completion dialog config."
+    fi
+
+    if ! /usr/sbin/chown "${loggedInUser}" "${completionDialogJSONFile}" 2>/dev/null; then
+        fatal "Failed to set ownership on completion dialog config for ${loggedInUser}."
+    fi
+
+    if ! /bin/chmod 600 "${completionDialogJSONFile}" 2>/dev/null; then
+        fatal "Failed to set permissions on completion dialog config for ${loggedInUser}."
+    fi
+
+    info "Completion dialog config handed off to ${loggedInUser}."
+}
 
 ####################################################################################################
 #
@@ -1020,12 +1117,14 @@ function executeInstallomatorLabel() {
     local label="$1"
     local validationPath="$2"
     local displayName="$3"
+    local iconURL="$4"
     local installomatorExitCode
     
     # Check if already installed
     if [[ -n "${validationPath}" && -e "${validationPath}" ]]; then
         info "Skipping '${label}': ${validationPath} already exists"
-        skippedItems+=("${label}")
+        skippedItems+=("${displayName}")
+        addCompletionReportRecord "${displayName}" "alreadyInstalled" "success" "${iconURL}" "No action was needed" "Already installed"
         return 0
     fi
     
@@ -1041,10 +1140,12 @@ function executeInstallomatorLabel() {
     if [[ ${installomatorExitCode} -ne 0 ]]; then
         errorOut "Installomator failed for '${label}' (exit code: ${installomatorExitCode})"
         failedItems+=("${displayName}")
+        addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "Please contact support if this app is required" "Not installed"
         return 1
     else
         info "Installomator completed for '${label}'"
         completedItems+=("${displayName}")
+        addCompletionReportRecord "${displayName}" "installed" "success" "${iconURL}" "Ready to use" "Installed"
         return 0
     fi
 }
@@ -1059,12 +1160,14 @@ function executeJamfPolicy() {
     local trigger="$1"
     local validationPath="$2"
     local displayName="$3"
+    local iconURL="$4"
     local jamfExitCode
     
     # Check if already configured (validation path exists)
     if [[ -n "${validationPath}" && -e "${validationPath}" ]]; then
         info "Skipping policy '${trigger}': ${validationPath} already exists"
-        skippedItems+=("${trigger}")
+        skippedItems+=("${displayName}")
+        addCompletionReportRecord "${displayName}" "alreadyInstalled" "success" "${iconURL}" "No action was needed" "Already installed"
         return 0
     fi
     
@@ -1081,16 +1184,19 @@ function executeJamfPolicy() {
         if [[ -n "${validationPath}" && -e "${validationPath}" ]]; then
             info "Jamf policy '${trigger}' completed successfully and validated"
             completedItems+=("${displayName}")
+            addCompletionReportRecord "${displayName}" "installed" "success" "${iconURL}" "Ready to use" "Installed"
             return 0
         else
             warning "Jamf policy '${trigger}' completed but validation path not found: ${validationPath}"
             # Still mark as completed since jamf returned 0
             completedItems+=("${displayName}")
+            addCompletionReportRecord "${displayName}" "needsReview" "error" "${iconURL}" "Installed, but we could not fully confirm the result" "Needs review"
             return 0
         fi
     else
         errorOut "Jamf policy '${trigger}' failed (exit code: ${jamfExitCode})"
         failedItems+=("${displayName}")
+        addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "Please contact support if this app is required" "Not installed"
         return 1
     fi
 }
@@ -1103,6 +1209,7 @@ function executeJamfPolicy() {
 
 function executeSYMLiteItems() {
     notice "Starting execution of ${#selectedItems[@]} selected items"
+    completionReportRecords=()
 
     if [[ ${#selectedItems[@]} -eq 0 ]]; then
         errorOut "No selected items available for execution"
@@ -1142,10 +1249,10 @@ function executeSYMLiteItems() {
         
         if [[ "${itemType}" == "installomator" ]]; then
             parseInstallomatorItem "${itemConfig}"
-            executeInstallomatorLabel "${itemLabel}" "${itemValidationPath}" "${itemDisplayName}"
+            executeInstallomatorLabel "${itemLabel}" "${itemValidationPath}" "${itemDisplayName}" "${itemIconURL}"
         elif [[ "${itemType}" == "jamf" ]]; then
             parseJamfPolicyItem "${itemConfig}"
-            executeJamfPolicy "${itemTrigger}" "${itemValidationPath}" "${itemDisplayName}"
+            executeJamfPolicy "${itemTrigger}" "${itemValidationPath}" "${itemDisplayName}" "${itemIconURL}"
         else
             warning "Unknown item type for ID: ${itemID}"
         fi
@@ -1211,46 +1318,115 @@ trap handleInterruption SIGINT SIGTERM
 function showCompletionDialog() {
     requireLoggedInUser "display completion dialog"
 
-    local dialogTitle
-    local dialogMessage
-    local dialogIcon
-    local failedItemsList=""
-    
-    if [[ ${#failedItems[@]} -gt 0 ]]; then
-        # Completion with errors
+    local installedCount=0
+    local alreadyInstalledCount=0
+    local needsReviewCount=0
+    local notInstalledCount=0
+    local record=""
+    local displayName=""
+    local statusKey=""
+    local dialogStatus=""
+    local iconURL=""
+    local subtitle=""
+    local statusText=""
+    local dialogTitle=""
+    local dialogIcon=""
+    local dialogMessage="Here's the status of your selected software, ${loggedInUserFirstname}.\n\n"
+    local listItemsJSON=""
+    local completionDialogJSON=""
+    local jsonValidationError=""
+    local retryCount=0
+    local maxRetries=5
+
+    for record in "${completionReportRecords[@]}"; do
+        IFS=$'\t' read -r displayName statusKey dialogStatus iconURL subtitle statusText <<< "${record}"
+
+        case "${statusKey}" in
+            installed )
+                ((installedCount++))
+                ;;
+            alreadyInstalled )
+                ((alreadyInstalledCount++))
+                ;;
+            needsReview )
+                ((needsReviewCount++))
+                ;;
+            notInstalled )
+                ((notInstalledCount++))
+                ;;
+        esac
+    done
+
+    if [[ ${notInstalledCount} -gt 0 ]]; then
         dialogTitle="Completed with Errors"
-        dialogIcon="SF=checkmark.circle.fill,weight=bold,colour1=#00ff44,colour2=#075c1e"
-        
-        dialogMessage="**${#completedItems[@]}** of **${#selectedItems[@]}** items completed successfully.\n\n"
-        dialogMessage="${dialogMessage}The following items failed:\n\n"
-        
-        for item in "${failedItems[@]}"; do
-            failedItemsList="${failedItemsList}• ${item}\n"
-        done
-        
-        dialogMessage="${dialogMessage}${failedItemsList}"
+        dialogIcon="SF=xmark.octagon.fill,weight=bold,colour1=#EB5545,colour2=#A61E16"
+    elif [[ ${needsReviewCount} -gt 0 ]]; then
+        dialogTitle="Completed with Warnings"
+        dialogIcon="SF=exclamationmark.triangle.fill,weight=bold,colour1=#F8D84A,colour2=#D18E00"
     else
-        # All successful
         dialogTitle="Installation Complete"
-        dialogIcon="SF=checkmark.circle.fill,weight=bold,colour1=#00ff44,colour2=#075c1e"
-        
-        if [[ ${#skippedItems[@]} -gt 0 ]]; then
-            dialogMessage="**${#completedItems[@]}** items installed successfully.\n\n**${#skippedItems[@]}** items were already installed and skipped."
-        else
-            dialogMessage="All **${#selectedItems[@]}** selected items installed successfully."
-        fi
+        dialogIcon="SF=checkmark.circle.fill,weight=bold,colour1=#63CA56,colour2=#2D7D2B"
     fi
-    
-    ${dialogBinary} \
-        --title "${dialogTitle}" \
-        --infotext "${scriptVersion}" \
-        --messagefont "size=${fontSize}" \
-        --message "${dialogMessage}" \
-        --icon "${dialogIcon}" \
-        --button1text "Close" \
-        --height 675 \
-        --width 900 2>/dev/null
-    
+
+    [[ ${installedCount} -gt 0 ]] && dialogMessage="${dialogMessage}**${installedCount}** installed and ready to use.\n"
+    [[ ${alreadyInstalledCount} -gt 0 ]] && dialogMessage="${dialogMessage}**${alreadyInstalledCount}** already installed.\n"
+    [[ ${needsReviewCount} -gt 0 ]] && dialogMessage="${dialogMessage}**${needsReviewCount}** need review.\n"
+    [[ ${notInstalledCount} -gt 0 ]] && dialogMessage="${dialogMessage}**${notInstalledCount}** not installed.\n"
+
+    listItemsJSON=$(buildCompletionReportListItemsJSON)
+
+    completionDialogJSONFile="$(mktemp "/var/tmp/dialogJSONFile_Completion_${organizationScriptName}.XXXXXX")"
+    if [[ -z "${completionDialogJSONFile}" ]]; then
+        fatal "Failed to create completion dialog JSON file"
+    fi
+
+    completionDialogJSON="{
+    \"title\": \"$(escapeJSONString "${dialogTitle}")\",
+    \"message\": \"$(escapeJSONString "${dialogMessage}")\",
+    \"icon\": \"$(escapeJSONString "${dialogIcon}")\",
+    \"button1text\": \"Close\",
+    \"infotext\": \"$(escapeJSONString "${scriptVersion}")\",
+    \"height\": 675,
+    \"width\": 900,
+    \"messagefont\": \"size=${fontSize}\",
+    \"listitem\": ${listItemsJSON}
+}"
+
+    if ! /bin/cat > "${completionDialogJSONFile}" <<EOF
+${completionDialogJSON}
+EOF
+    then
+        rm -f -- "${completionDialogJSONFile}" 2>/dev/null
+        completionDialogJSONFile=""
+        fatal "Failed to write completion dialog JSON file"
+    fi
+
+    jsonValidationError=$(/usr/bin/plutil -convert json -o /dev/null "${completionDialogJSONFile}" 2>&1)
+    if [[ $? -ne 0 ]]; then
+        rm -f -- "${completionDialogJSONFile}" 2>/dev/null
+        completionDialogJSONFile=""
+        fatal "Completion dialog JSON is malformed: ${jsonValidationError}"
+    fi
+
+    prepareCompletionDialogConfigForUser
+
+    while [[ ! -f "${completionDialogJSONFile}" || ! -r "${completionDialogJSONFile}" ]] && [[ ${retryCount} -lt ${maxRetries} ]]; do
+        sleep 0.2
+        ((retryCount++))
+    done
+
+    if [[ ! -f "${completionDialogJSONFile}" || ! -r "${completionDialogJSONFile}" ]]; then
+        local unreadableCompletionDialogJSONFile="${completionDialogJSONFile}"
+        rm -f -- "${completionDialogJSONFile}" 2>/dev/null
+        completionDialogJSONFile=""
+        fatal "Completion dialog JSON file (${unreadableCompletionDialogJSONFile}) is not readable after ${maxRetries} attempts"
+    fi
+
+    runAsUser "${loggedInUser}" "${dialogBinary}" --jsonfile "${completionDialogJSONFile}" 2>/dev/null
+
+    rm -f -- "${completionDialogJSONFile}" 2>/dev/null
+    completionDialogJSONFile=""
+
     notice "Completion dialog closed"
 }
 
@@ -1294,17 +1470,19 @@ function promptForRestart() {
     requireLoggedInUser "display restart prompt"
     
     local rc
+    local restartFontSize=$(( fontSize > 2 ? fontSize - 2 : fontSize ))
     
     ${dialogBinary} \
         --title "Restart Recommended" \
         --infotext "${scriptVersion}" \
-        --messagefont "size=${fontSize}" \
-        --message "A restart is recommended to complete the installation.\n\nWould you like to restart now?" \
+        --messagefont "size=${restartFontSize}" \
+        --message "**A restart is recommended after performing any installation.**\n\nWould you like to restart now?" \
         --icon "SF=restart.circle.fill,colour=#969899" \
+        --buttonstyle "stack" \
         --button1text "Restart Now" \
         --button2text "Later" \
-        --height 675 \
-        --width 900 2>/dev/null
+        --height 400 \
+        --width 400 2>/dev/null
     
     rc=$?
     
@@ -1339,19 +1517,21 @@ if ! executeSYMLiteItems; then
     fatal "Failed to execute selected items"
 fi
 
-# Skip completion and restart dialogs if all selected items were already installed
-if [[ ${#completedItems[@]} -eq 0 && ${#failedItems[@]} -eq 0 ]]; then
-    notice "All ${#skippedItems[@]} selected items were already installed; skipping completion dialogs"
-    info "SYM-Lite execution complete - Total Elapsed Time: $(formattedElapsedTime)"
-    quitScript 0
-fi
-
 # Phase 5: Display completion and prompt for restart
 if [[ "${operationMode}" == "silent" ]]; then
     info "Silent mode enabled; skipping completion dialog and restart prompt"
 else
+    if [[ ${#completedItems[@]} -eq 0 && ${#failedItems[@]} -eq 0 ]]; then
+        notice "All ${#skippedItems[@]} selected items were already installed; showing completion report without restart prompt"
+    fi
+
     showCompletionDialog
-    promptForRestart
+
+    if [[ ${#completedItems[@]} -eq 0 && ${#failedItems[@]} -eq 0 ]]; then
+        info "Skipping restart prompt because all selected items were already installed"
+    else
+        promptForRestart
+    fi
 fi
 
 info "SYM-Lite execution complete - Total Elapsed Time: $(formattedElapsedTime)"

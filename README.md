@@ -42,7 +42,7 @@
 ✓ **Log monitoring** — Parses Installomator.log for intermediate states (downloading, installing, verifying)  
 ✓ **Path-based validation** — Pre/post-execution checks via file system monitoring  
 ✓ **Cache monitoring** — Detects in-progress downloads  
-✓ **Completion dialogs** — Success/failure summary and restart prompt (skipped when all items already installed)  
+✓ **Completion report** — Per-item results summary and optional restart prompt  
 ✓ **Graceful interruption** — Clean shutdown on SIGINT/SIGTERM with 30-second timeout  
 
 ---
@@ -107,7 +107,7 @@ sudo ~/Downloads/SYM-Lite.zsh
 1. Selection dialog appears with all configured items
 2. User selects one or more items using checkboxes
 3. Inspect Mode dialog launches showing real-time progress
-4. Completion dialog shows results
+4. Completion report shows one row per selected item
 5. Optional restart prompt
 
 **Interactive mode requirements:**
@@ -189,8 +189,8 @@ EXECUTION ENGINE
   └─ Silent mode exits when execution completes
        ↓
 COMPLETION & RESTART
-  ├─ Interactive mode shows completion dialog (success/errors)
-  └─ Interactive mode prompts for restart (if enabled)
+  ├─ Interactive mode shows a completion report for selected items
+  └─ Interactive mode prompts for restart (if enabled and something was newly installed)
 ```
 
 ---
@@ -246,11 +246,11 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 
 ## Restart Prompt Behavior
 
-In interactive mode, after all items complete and the completion dialog closes, SYM-Lite prompts for a restart (if `restartPromptEnabled="true"`).
+In interactive mode, after all items complete and the completion report closes, SYM-Lite prompts for a restart (if `restartPromptEnabled="true"` and something was newly installed).
 
 **Restart Prompt Dialog:**
 - Title: "Restart Recommended"
-- Message: "A restart is recommended to complete the installation. Would you like to restart now?"
+- Message: "A restart is recommended after performing any installation. Would you like to restart now?"
 - Button 1: "Restart Now"
 - Button 2: "Later"
 
@@ -269,6 +269,10 @@ In interactive mode, after all items complete and the completion dialog closes, 
 - Restart prompt **never shows** in silent mode
 - Script exits when item execution completes
 - Suitable for unattended deployment
+
+**All Items Already Installed:**
+- Interactive mode still shows the completion report
+- Restart prompt does not show
 
 **Disable Restart Prompt:**
 Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in all modes.
