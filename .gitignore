@@ -1,5 +1,5 @@
 # SYM-Lite
-## Version 0.0.1a3
+## Version 1.0.0b1
 
 
 
@@ -26,3 +26,9 @@ Icon?
 .zcompdump*
 .zcompcache/
 *.zwc
+
+# Local deployment script (contains versioning logic)
+.deploySYMLite.zsh
+
+# Version tracking (local only)
+VERSION.txt

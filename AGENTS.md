@@ -1,6 +1,6 @@
 # SYM-Lite — Agent Instructions
 
-> **Author**: Dan K. Snelson | **Version**: 0.0.1a3 | **Language**: zsh (Shell) | **Platform**: macOS only | **License**: MIT
+> **Author**: Dan K. Snelson | **Version**: 1.0.0b1 | **Language**: zsh (Shell) | **Platform**: macOS only | **License**: MIT
 
 ## Big picture
 - SYM-Lite is a macOS-only, root-run script that unifies Installomator label execution and Jamf Pro policy triggers behind a single swiftDialog-driven workflow.
@@ -17,9 +17,9 @@
 
 ## Runtime model
 - The script is designed to run as `root`. Logging, temp file creation, Installomator execution, and Jamf execution assume elevated privileges.
-- UI actions require an active logged-in user. `requireLoggedInUser` and `runAsUser` gate interactive dialog launch and restart confirmation.
+- UI actions require an active logged-in GUI user. Interactive pre-flight waits up to 120 seconds for a valid console user, and `requireLoggedInUser` plus `runAsUser` gate dialog launch and restart confirmation.
 - Item definitions live in two arrays near the top of `SYM-Lite.zsh`:
-  - `installomatorItems`
+  - `installomatorLabels`
   - `jamfPolicyItems`
 - Each item is defined as:
   - `"identifier | displayName | validationPath | iconURL"`
@@ -30,11 +30,11 @@
 - **swiftDialog** is required for all runs because pre-flight always calls `dialogCheck`, and it is auto-installed or updated if missing/outdated. Minimum required version is `3.0.1.4955`.
 - Because this repo requires swiftDialog 3.x, the effective minimum supported OS is **macOS 15**.
 - **Installomator** is expected at `/Library/Management/AppAutoPatch/Installomator/Installomator.sh` unless `organizationInstallomatorFile` is changed.
-- **Jamf Pro Client** is expected at `/usr/local/bin/jamf` unless `jamfBinary` is changed.
+- **Jamf Pro Binary** is expected at `/usr/local/bin/jamf` unless `jamfBinary` is changed.
 - **Network access** may be required for:
   - swiftDialog bootstrap via GitHub API and GitHub release download
   - remote icon assets used in dialogs
-- Inspect Mode configuration is written to a temp JSON file under `/var/tmp`.
+- Inspect Mode configuration is written to a temp JSON file under `/var/tmp` and handed off to the logged-in GUI user before launch.
 - Logging writes to `/var/log/org.churchofjesuschrist.log` by default, and Installomator progress is read from `/var/log/Installomator.log`.
 
 ## Logging
@@ -61,7 +61,7 @@
   - `function name() {` declarations
   - braced variable expansion as the default style
   - large hash-wall section separators and generous spacing between top-level blocks
-- Keep `installomatorItems` and `jamfPolicyItems` sorted by display name intent, because the UI merges and sorts both groups together for presentation.
+- Keep `installomatorLabels` and `jamfPolicyItems` sorted by display name intent, because the UI merges and sorts both groups together for presentation.
 - If you change user-visible behavior, configuration semantics, or required environment assumptions, update `README.md` in the same pass.
 - `CHANGELOG.md` is the running history for all versions. Add each released version there.
 - The `HISTORY` section in `SYM-Lite.zsh` should only describe changes for the current version under development, not retain the full historical archive.
@@ -72,7 +72,7 @@
 - Jamf policies do not have rich progress parsing. They are effectively binary from the UI perspective unless validation paths appear.
 - Jamf success with a missing `validationPath` is logged as a warning but still treated as completed.
 - Skip logic is entirely path-based. A stale file path can suppress needed execution.
-- Interactive flows can fail on headless systems or at the login window; silent mode is the safer path when no user session is available.
+- Interactive flows can fail on headless systems or at the login window; after 120 seconds without a valid GUI user, the script exits. Silent mode is the safer path when no user session is available.
 
 ## Key decisions
 
@@ -80,7 +80,7 @@
 |----------|-----------|
 | Single-script architecture | Keeps deployment simple and avoids a build/assembly step |
 | Sequential execution | Easier logging, UI tracking, and failure isolation |
-| Unified selection UI for Jamf + Installomator items | Presents one operator-facing workflow instead of two separate tools |
+| Unified selection UI for Jamf + Installomator labels | Presents one operator-facing workflow instead of two separate tools |
 | Path-based validation and skip logic | Simple and observable, even if imperfect |
 | Interactive mode owns completion and restart dialogs | Silent mode remains automation-friendly and non-blocking |
 | Auto-install/update swiftDialog | Reduces operator setup friction on managed Macs |
@@ -95,4 +95,4 @@
   2. Item parsing and selection state
   3. Validation paths
   4. Installomator or Jamf command output relayed into `scriptLog`
-  5. Inspect Mode JSON generation and dialog launch conditions
+  5. Inspect Mode JSON generation, user handoff, and dialog launch conditions

@@ -7,7 +7,7 @@
 #
 # - Lean, purpose-built script for executing Jamf Pro Policy Custom Triggers and Installomator labels
 # - User selects which items to install/execute via swiftDialog selection UI
-# - Monitors execution progress via swiftDialog 3.0.0 Inspect Mode
+# - Monitors execution progress via swiftDialog Inspect Mode
 # - No user input prompts beyond selection (no asset tag, computer name, etc.)
 #
 # https://snelson.us/sym
@@ -16,8 +16,10 @@
 #
 # HISTORY
 #
-# Version 0.0.1a3, 27-Mar-2026, Dan K. Snelson (@dan-snelson)
-#   - Added additional apps to Installomator items list.
+# Version 1.0.0b1, 28-Mar-2026, Dan K. Snelson (@dan-snelson)
+#   - Initial beta release
+#   - Added interactive logged-in GUI user validation and per-user Inspect Mode config handoff
+#   - Improved Inspect Mode JSON validation
 #
 ####################################################################################################
 
@@ -31,9 +33,10 @@
 
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
 setopt NONOMATCH
+setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="0.0.1a3"
+scriptVersion="1.0.0b1"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -102,7 +105,7 @@ restartPromptEnabled="true"
 
 # Installomator Items
 # Format: "label | Display Name | Validation Path | Icon URL"
-installomatorItems=(
+installomatorLabels=(
     "androidstudio | Android Studio | /Applications/Android Studio.app | https://use2.ics.services.jamfcloud.com/icon/hash_f7021d808263d18f52ba2535ec66d35f8bb24b08ab9bff6aee22ecb319159904"
     "awsvpnclient | AWS VPN Client | /Applications/AWS VPN Client/AWS VPN Client.app | https://usw2.ics.services.jamfcloud.com/icon/hash_1d1bef5523d9f7eca5a45f2db9a63732e85edb5f914220807ca740ba7c4881b9"
     "bruno | Bruno | /Applications/Bruno.app | https://usw2.ics.services.jamfcloud.com/icon/hash_48501630ad2f5dd5de3e055d6acdda07682895440cad366ee7befac71cab1399"
@@ -118,15 +121,6 @@ jamfPolicyItems=(
     "appleXcode | Xcode | /Applications/Xcode.app | https://usw2.ics.services.jamfcloud.com/icon/hash_583afb5af440479d642b3c35ec4ec3ad06c74ec814dba9af84e4e69202edf62a"
     "homebrew | Homebrew | /opt/homebrew/bin/brew | https://usw2.ics.services.jamfcloud.com/icon/hash_9edff3eb98482a1aaf17f8560488f7b500cc7dc64955b8a9027b3801cab0fd82"
 )
-
-
-
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Logged-in User Variables
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
-loggedInUser=""
-
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -202,12 +196,27 @@ trap cleanup EXIT
 #
 ####################################################################################################
 
+function currentLoggedInUser() {
+    local shouldLog="${1:-true}"
+
+    loggedInUser=$( /bin/echo "show State:/Users/ConsoleUser" | /usr/sbin/scutil | /usr/bin/awk '/Name :/ { print $3 }' )
+
+    if [[ "${shouldLog}" == "true" ]]; then
+        preFlight "Current Logged-in User: ${loggedInUser}"
+    fi
+}
+
+function updateLoggedInUserDetails() {
+    loggedInUserFullname=$( /usr/bin/id -F "${loggedInUser}" )
+    loggedInUserFirstname=$( /bin/echo "${loggedInUserFullname}" | /usr/bin/sed -E 's/^.*, // ; s/([^ ]*).*/\1/' | /usr/bin/sed 's/\(.\{25\}\).*/\1…/' | /usr/bin/awk '{print ( $0 == toupper($0) ? toupper(substr($0,1,1))substr(tolower($0),2) : toupper(substr($0,1,1))substr($0,2) )}' )
+    loggedInUserID=$( /usr/bin/id -u "${loggedInUser}" )
+    loggedInUserHomeDirectory=$( /usr/bin/dscl . read "/Users/${loggedInUser}" NFSHomeDirectory | /usr/bin/awk -F ' ' '{ print $2 }' )
+}
+
 function requireLoggedInUser() {
     local context="${1:-perform a UI action}"
 
-    if [[ -z "${loggedInUser}" || "${loggedInUser}" == "loginwindow" ]]; then
-        loggedInUser=$( /bin/echo "show State:/Users/ConsoleUser" | /usr/sbin/scutil | /usr/bin/awk '/Name :/ { print $3 }' )
-    fi
+    currentLoggedInUser "false"
 
     if [[ -z "${loggedInUser}" || "${loggedInUser}" == "loginwindow" ]]; then
         fatal "No valid logged-in GUI user detected; cannot ${context}."
@@ -216,6 +225,8 @@ function requireLoggedInUser() {
     if ! /usr/bin/id -u "${loggedInUser}" >/dev/null 2>&1; then
         fatal "Logged-in GUI user '${loggedInUser}' is not resolvable; cannot ${context}."
     fi
+
+    updateLoggedInUserDetails
 }
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -290,7 +301,7 @@ function getAllItemIDs() {
     local allIDs=()
     
     # Add Installomator labels
-    for item in "${installomatorItems[@]}"; do
+    for item in "${installomatorLabels[@]}"; do
         local parts=("${(@s: | :)item}")
         allIDs+=("${parts[1]}")
     done
@@ -301,7 +312,7 @@ function getAllItemIDs() {
         allIDs+=("${parts[1]}")
     done
     
-    echo "${allIDs[@]}"
+    print -r -- "${allIDs[@]}"
 }
 
 
@@ -315,11 +326,11 @@ function getAllItemIDs() {
 function getItemType() {
     local itemID="$1"
     
-    # Check Installomator items
-    for item in "${installomatorItems[@]}"; do
+    # Check Installomator labels
+    for item in "${installomatorLabels[@]}"; do
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
-            echo "installomator"
+            print -r -- "installomator"
             return 0
         fi
     done
@@ -328,12 +339,12 @@ function getItemType() {
     for item in "${jamfPolicyItems[@]}"; do
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
-            echo "jamf"
+            print -r -- "jamf"
             return 0
         fi
     done
     
-    echo ""
+    print -r -- ""
     return 1
 }
 
@@ -348,11 +359,11 @@ function getItemType() {
 function getItemConfig() {
     local itemID="$1"
     
-    # Check Installomator items
-    for item in "${installomatorItems[@]}"; do
+    # Check Installomator labels
+    for item in "${installomatorLabels[@]}"; do
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
-            echo "${item}"
+            print -r -- "${item}"
             return 0
         fi
     done
@@ -361,12 +372,12 @@ function getItemConfig() {
     for item in "${jamfPolicyItems[@]}"; do
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
-            echo "${item}"
+            print -r -- "${item}"
             return 0
         fi
     done
     
-    echo ""
+    print -r -- ""
     return 1
 }
 
@@ -579,13 +590,47 @@ dialogCheck
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Pre-flight Check: Validate Installomator (if Installomator items configured)
+# Pre-flight Check: Validate Logged-in System Accounts (Interactive Mode)
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-if [[ ${#installomatorItems[@]} -gt 0 ]]; then
+if [[ "${operationMode}" != "silent" ]]; then
+    maxWait=120
+    counter=0
+
+    preFlight "Check for Logged-in System Accounts …"
+    currentLoggedInUser
+
+    until [[ -n "${loggedInUser}" && "${loggedInUser}" != "loginwindow" ]]; do
+        if [[ "${counter}" -ge "${maxWait}" ]]; then
+            fatal "No valid user logged in after ${maxWait} seconds; exiting."
+        fi
+        sleep 1
+        ((counter++))
+        currentLoggedInUser
+        preFlight "Logged-in User Counter: ${counter}"
+    done
+
+    if ! /usr/bin/id -u "${loggedInUser}" >/dev/null 2>&1; then
+        fatal "Logged-in GUI user '${loggedInUser}' is not resolvable; exiting."
+    fi
+
+    updateLoggedInUserDetails
+    preFlight "Current Logged-in User First Name (ID): ${loggedInUserFirstname} (${loggedInUserID})"
+    preFlight "Validated logged-in GUI user '${loggedInUser}'."
+else
+    preFlight "Silent mode enabled; skipping logged-in GUI user pre-flight check."
+fi
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Pre-flight Check: Validate Installomator (if Installomator labels configured)
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+if [[ ${#installomatorLabels[@]} -gt 0 ]]; then
     if [[ ! -x "${organizationInstallomatorFile}" ]]; then
         warning "Installomator not found at ${organizationInstallomatorFile}"
-        warning "Installomator items will be skipped"
+        warning "Installomator labels will be skipped"
     elif [[ ! -s "${organizationInstallomatorFile}" ]]; then
         fatal "Installomator at ${organizationInstallomatorFile} is zero bytes"
     else
@@ -717,7 +762,6 @@ function createSYMLiteInspectConfig() {
         "Please wait while items are being processed.",
         "Each item completes when its validation path appears.",
         "This process may take several minutes.",
-        "You can minimize this window if needed.",
         "The installation will complete automatically.",
         "A restart may be required after completion."
     ],
@@ -738,9 +782,10 @@ EOF
         info "Dialog inspect config file created at ${dialogInspectModeJSONFile}"
     fi
     
-    # Validate JSON with built-in macOS tooling
+    # Validate JSON with built-in macOS tooling.
+    # `plutil -lint` only validates property lists, not raw JSON.
     local jsonValidationError
-    jsonValidationError=$(/usr/bin/plutil -lint "${dialogInspectModeJSONFile}" 2>&1)
+    jsonValidationError=$(/usr/bin/plutil -convert json -o /dev/null "${dialogInspectModeJSONFile}" 2>&1)
     if [[ $? -ne 0 ]]; then
         fatal "Dialog inspect config JSON is malformed: ${jsonValidationError}"
     else
@@ -748,6 +793,26 @@ EOF
     fi
 
     return 0
+}
+
+function prepareInspectConfigForUser() {
+    if [[ -z "${dialogInspectModeJSONFile}" || ! -e "${dialogInspectModeJSONFile}" ]]; then
+        fatal "Dialog inspect config file is unavailable for user handoff."
+    fi
+
+    if [[ -z "${loggedInUser}" ]]; then
+        fatal "No logged-in user available to receive Dialog inspect config."
+    fi
+
+    if ! /usr/sbin/chown "${loggedInUser}" "${dialogInspectModeJSONFile}" 2>/dev/null; then
+        fatal "Failed to set ownership on Dialog inspect config for ${loggedInUser}."
+    fi
+
+    if ! /bin/chmod 600 "${dialogInspectModeJSONFile}" 2>/dev/null; then
+        fatal "Failed to set permissions on Dialog inspect config for ${loggedInUser}."
+    fi
+
+    info "Dialog inspect config handed off to ${loggedInUser}."
 }
 
 
@@ -841,6 +906,8 @@ function showSelectionDialog() {
         return 0
     fi
 
+    requireLoggedInUser "display selection dialog"
+
     local checkboxArgs=()
     local baseMessage
     local warningMessage=""
@@ -849,11 +916,11 @@ function showSelectionDialog() {
     local rc
 
     # Build message
-    baseMessage="Select one or more applications to install."
+    baseMessage="**$(date +'Happy %A,') ${loggedInUserFirstname}!**\n\nSelect one or more applications to install."
 
     # Build unified checkbox list (Installomator + Jamf, sorted together by display name)
     local -a allSortKeys=()
-    for item in "${installomatorItems[@]}"; do
+    for item in "${installomatorLabels[@]}"; do
         local parts=("${(@s: | :)item}")
         allSortKeys+=("${parts[2]} | installomator | ${item}")
     done
@@ -1043,17 +1110,19 @@ function executeSYMLiteItems() {
     fi
     
     if [[ "${operationMode}" != "silent" ]]; then
+        requireLoggedInUser "launch Inspect Mode"
+
         # Create Inspect Mode configuration
         notice "Creating Inspect Mode configuration …"
         if ! createSYMLiteInspectConfig; then
             fatal "Failed to create Inspect Mode configuration"
         fi
 
-        requireLoggedInUser "launch Inspect Mode"
+        prepareInspectConfigForUser
 
         # Launch Dialog in background for real-time progress
         notice "Launching Inspect Mode dialog …"
-        runAsUser "${loggedInUser}" DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --inspect-mode &
+        runAsUser "${loggedInUser}" /usr/bin/env DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --inspect-mode &
         dialogPID=$!
         info "Inspect Mode PID: ${dialogPID}"
 
@@ -1140,6 +1209,8 @@ trap handleInterruption SIGINT SIGTERM
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 function showCompletionDialog() {
+    requireLoggedInUser "display completion dialog"
+
     local dialogTitle
     local dialogMessage
     local dialogIcon
@@ -1219,6 +1290,8 @@ function promptForRestart() {
     if [[ "${restartPromptEnabled}" != "true" ]] || [[ "${operationMode}" == "silent" ]]; then
         return 0
     fi
+
+    requireLoggedInUser "display restart prompt"
     
     local rc
     
@@ -1252,7 +1325,7 @@ function promptForRestart() {
 ####################################################################################################
 
 notice "SYM-Lite initialized successfully"
-notice "Configuration: ${#installomatorItems[@]} Installomator items, ${#jamfPolicyItems[@]} Jamf policy items"
+notice "Configuration: ${#installomatorLabels[@]} Installomator labels, ${#jamfPolicyItems[@]} Jamf policy items"
 notice "Operation mode: ${operationMode}"
 
 # Phase 2: Show selection dialog
