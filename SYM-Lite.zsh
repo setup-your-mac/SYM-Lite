@@ -148,6 +148,7 @@ failedItems=()
 completedItems=()
 skippedItems=()
 completionReportRecords=()
+completionDialogJSONFile=""
 dialogPID=""
 dialogTemporaryDirectory=""
 
@@ -176,6 +177,12 @@ function fatal()        { updateScriptLog "FATAL ERROR" "${1}"; exit 10; }
 function cleanup() {
     if [[ -n "${dialogInspectModeJSONFile}" && -e "${dialogInspectModeJSONFile}" ]]; then
         rm -f -- "${dialogInspectModeJSONFile}" 2>/dev/null
+        dialogInspectModeJSONFile=""
+    fi
+
+    if [[ -n "${completionDialogJSONFile}" && -e "${completionDialogJSONFile}" ]]; then
+        rm -f -- "${completionDialogJSONFile}" 2>/dev/null
+        completionDialogJSONFile=""
     fi
 
     if [[ -n "${dialogTemporaryDirectory}" && -d "${dialogTemporaryDirectory}" ]]; then
@@ -401,14 +408,15 @@ function escapeJSONString() {
 
 function addCompletionReportRecord() {
     local displayName="$1"
-    local reportStatus="$2"
-    local iconURL="$3"
-    local subtitle="$4"
-    local statusText="$5"
+    local statusKey="$2"
+    local dialogStatus="$3"
+    local iconURL="$4"
+    local subtitle="$5"
+    local statusText="$6"
 
     [[ -z "${iconURL}" ]] && iconURL="${mainDialogIcon}"
 
-    completionReportRecords+=("${displayName}"$'\t'"${reportStatus}"$'\t'"${iconURL}"$'\t'"${subtitle}"$'\t'"${statusText}")
+    completionReportRecords+=("${displayName}"$'\t'"${statusKey}"$'\t'"${dialogStatus}"$'\t'"${iconURL}"$'\t'"${subtitle}"$'\t'"${statusText}")
 }
 
 function buildCompletionReportListItemsJSON() {
@@ -422,7 +430,8 @@ function buildCompletionReportListItemsJSON() {
 
     local record=""
     local displayName=""
-    local reportStatus=""
+    local statusKey=""
+    local dialogStatus=""
     local iconURL=""
     local subtitle=""
     local statusText=""
@@ -434,7 +443,7 @@ function buildCompletionReportListItemsJSON() {
     local separator=""
 
     for record in "${sortedRecords[@]}"; do
-        IFS=$'\t' read -r displayName reportStatus iconURL subtitle statusText <<< "${record}"
+        IFS=$'\t' read -r displayName statusKey dialogStatus iconURL subtitle statusText <<< "${record}"
 
         escapedDisplayName=$(escapeJSONString "${displayName}")
         escapedIconURL=$(escapeJSONString "${iconURL}")
@@ -442,7 +451,7 @@ function buildCompletionReportListItemsJSON() {
         escapedStatusText=$(escapeJSONString "${statusText}")
 
         listItemsJSON="${listItemsJSON}${separator}
-        {\"title\":\"${escapedDisplayName}\",\"subtitle\":\"${escapedSubtitle}\",\"icon\":\"${escapedIconURL}\",\"status\":\"${reportStatus}\",\"statustext\":\"${escapedStatusText}\",\"iconalpha\":1}"
+        {\"title\":\"${escapedDisplayName}\",\"subtitle\":\"${escapedSubtitle}\",\"icon\":\"${escapedIconURL}\",\"status\":\"${dialogStatus}\",\"statustext\":\"${escapedStatusText}\",\"iconalpha\":1}"
         separator=","
     done
 
@@ -885,6 +894,26 @@ function prepareInspectConfigForUser() {
     info "Dialog inspect config handed off to ${loggedInUser}."
 }
 
+function prepareCompletionDialogConfigForUser() {
+    if [[ -z "${completionDialogJSONFile}" || ! -e "${completionDialogJSONFile}" ]]; then
+        fatal "Completion dialog config file is unavailable for user handoff."
+    fi
+
+    if [[ -z "${loggedInUser}" ]]; then
+        fatal "No logged-in user available to receive completion dialog config."
+    fi
+
+    if ! /usr/sbin/chown "${loggedInUser}" "${completionDialogJSONFile}" 2>/dev/null; then
+        fatal "Failed to set ownership on completion dialog config for ${loggedInUser}."
+    fi
+
+    if ! /bin/chmod 600 "${completionDialogJSONFile}" 2>/dev/null; then
+        fatal "Failed to set permissions on completion dialog config for ${loggedInUser}."
+    fi
+
+    info "Completion dialog config handed off to ${loggedInUser}."
+}
+
 ####################################################################################################
 #
 # Selection Interface Functions
@@ -1095,7 +1124,7 @@ function executeInstallomatorLabel() {
     if [[ -n "${validationPath}" && -e "${validationPath}" ]]; then
         info "Skipping '${label}': ${validationPath} already exists"
         skippedItems+=("${displayName}")
-        addCompletionReportRecord "${displayName}" "success" "${iconURL}" "No action was needed" "Already installed"
+        addCompletionReportRecord "${displayName}" "alreadyInstalled" "success" "${iconURL}" "No action was needed" "Already installed"
         return 0
     fi
     
@@ -1111,12 +1140,12 @@ function executeInstallomatorLabel() {
     if [[ ${installomatorExitCode} -ne 0 ]]; then
         errorOut "Installomator failed for '${label}' (exit code: ${installomatorExitCode})"
         failedItems+=("${displayName}")
-        addCompletionReportRecord "${displayName}" "fail" "${iconURL}" "Please contact support if this app is required" "Not installed"
+        addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "Please contact support if this app is required" "Not installed"
         return 1
     else
         info "Installomator completed for '${label}'"
         completedItems+=("${displayName}")
-        addCompletionReportRecord "${displayName}" "success" "${iconURL}" "Ready to use" "Installed"
+        addCompletionReportRecord "${displayName}" "installed" "success" "${iconURL}" "Ready to use" "Installed"
         return 0
     fi
 }
@@ -1138,7 +1167,7 @@ function executeJamfPolicy() {
     if [[ -n "${validationPath}" && -e "${validationPath}" ]]; then
         info "Skipping policy '${trigger}': ${validationPath} already exists"
         skippedItems+=("${displayName}")
-        addCompletionReportRecord "${displayName}" "success" "${iconURL}" "No action was needed" "Already installed"
+        addCompletionReportRecord "${displayName}" "alreadyInstalled" "success" "${iconURL}" "No action was needed" "Already installed"
         return 0
     fi
     
@@ -1155,19 +1184,19 @@ function executeJamfPolicy() {
         if [[ -n "${validationPath}" && -e "${validationPath}" ]]; then
             info "Jamf policy '${trigger}' completed successfully and validated"
             completedItems+=("${displayName}")
-            addCompletionReportRecord "${displayName}" "success" "${iconURL}" "Ready to use" "Installed"
+            addCompletionReportRecord "${displayName}" "installed" "success" "${iconURL}" "Ready to use" "Installed"
             return 0
         else
             warning "Jamf policy '${trigger}' completed but validation path not found: ${validationPath}"
             # Still mark as completed since jamf returned 0
             completedItems+=("${displayName}")
-            addCompletionReportRecord "${displayName}" "error" "${iconURL}" "Installed, but we could not fully confirm the result" "Needs review"
+            addCompletionReportRecord "${displayName}" "needsReview" "error" "${iconURL}" "Installed, but we could not fully confirm the result" "Needs review"
             return 0
         fi
     else
         errorOut "Jamf policy '${trigger}' failed (exit code: ${jamfExitCode})"
         failedItems+=("${displayName}")
-        addCompletionReportRecord "${displayName}" "fail" "${iconURL}" "Please contact support if this app is required" "Not installed"
+        addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "Please contact support if this app is required" "Not installed"
         return 1
     fi
 }
@@ -1295,7 +1324,8 @@ function showCompletionDialog() {
     local notInstalledCount=0
     local record=""
     local displayName=""
-    local reportStatus=""
+    local statusKey=""
+    local dialogStatus=""
     local iconURL=""
     local subtitle=""
     local statusText=""
@@ -1303,26 +1333,25 @@ function showCompletionDialog() {
     local dialogIcon=""
     local dialogMessage="Here's the status of your selected software, ${loggedInUserFirstname}.\n\n"
     local listItemsJSON=""
-    local completionDialogJSONFile=""
     local completionDialogJSON=""
     local jsonValidationError=""
     local retryCount=0
     local maxRetries=5
 
     for record in "${completionReportRecords[@]}"; do
-        IFS=$'\t' read -r displayName reportStatus iconURL subtitle statusText <<< "${record}"
+        IFS=$'\t' read -r displayName statusKey dialogStatus iconURL subtitle statusText <<< "${record}"
 
-        case "${statusText}" in
-            "Installed" )
+        case "${statusKey}" in
+            installed )
                 ((installedCount++))
                 ;;
-            "Already installed" )
+            alreadyInstalled )
                 ((alreadyInstalledCount++))
                 ;;
-            "Needs review" )
+            needsReview )
                 ((needsReviewCount++))
                 ;;
-            "Not installed" )
+            notInstalled )
                 ((notInstalledCount++))
                 ;;
         esac
@@ -1346,7 +1375,7 @@ function showCompletionDialog() {
 
     listItemsJSON=$(buildCompletionReportListItemsJSON)
 
-    completionDialogJSONFile="$(mktemp -u "/var/tmp/dialogJSONFile_Completion_${organizationScriptName}.XXXX")"
+    completionDialogJSONFile="$(mktemp "/var/tmp/dialogJSONFile_Completion_${organizationScriptName}.XXXXXX")"
     if [[ -z "${completionDialogJSONFile}" ]]; then
         fatal "Failed to create completion dialog JSON file"
     fi
@@ -1368,16 +1397,18 @@ ${completionDialogJSON}
 EOF
     then
         rm -f -- "${completionDialogJSONFile}" 2>/dev/null
+        completionDialogJSONFile=""
         fatal "Failed to write completion dialog JSON file"
     fi
 
     jsonValidationError=$(/usr/bin/plutil -convert json -o /dev/null "${completionDialogJSONFile}" 2>&1)
     if [[ $? -ne 0 ]]; then
         rm -f -- "${completionDialogJSONFile}" 2>/dev/null
+        completionDialogJSONFile=""
         fatal "Completion dialog JSON is malformed: ${jsonValidationError}"
     fi
 
-    /bin/chmod 644 "${completionDialogJSONFile}" 2>/dev/null || fatal "Failed to set permissions on completion dialog config"
+    prepareCompletionDialogConfigForUser
 
     while [[ ! -f "${completionDialogJSONFile}" || ! -r "${completionDialogJSONFile}" ]] && [[ ${retryCount} -lt ${maxRetries} ]]; do
         sleep 0.2
@@ -1385,13 +1416,16 @@ EOF
     done
 
     if [[ ! -f "${completionDialogJSONFile}" || ! -r "${completionDialogJSONFile}" ]]; then
+        local unreadableCompletionDialogJSONFile="${completionDialogJSONFile}"
         rm -f -- "${completionDialogJSONFile}" 2>/dev/null
-        fatal "Completion dialog JSON file (${completionDialogJSONFile}) is not readable after ${maxRetries} attempts"
+        completionDialogJSONFile=""
+        fatal "Completion dialog JSON file (${unreadableCompletionDialogJSONFile}) is not readable after ${maxRetries} attempts"
     fi
 
-    ${dialogBinary} --jsonfile "${completionDialogJSONFile}" 2>/dev/null
+    runAsUser "${loggedInUser}" "${dialogBinary}" --jsonfile "${completionDialogJSONFile}" 2>/dev/null
 
     rm -f -- "${completionDialogJSONFile}" 2>/dev/null
+    completionDialogJSONFile=""
 
     notice "Completion dialog closed"
 }

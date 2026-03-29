@@ -42,7 +42,7 @@
 ✓ **Log monitoring** — Parses Installomator.log for intermediate states (downloading, installing, verifying)  
 ✓ **Path-based validation** — Pre/post-execution checks via file system monitoring  
 ✓ **Cache monitoring** — Detects in-progress downloads  
-✓ **Completion dialogs** — Success/failure summary and restart prompt  
+✓ **Completion report** — Per-item results summary and optional restart prompt  
 ✓ **Graceful interruption** — Clean shutdown on SIGINT/SIGTERM with 30-second timeout  
 
 ---
@@ -250,7 +250,7 @@ In interactive mode, after all items complete and the completion report closes, 
 
 **Restart Prompt Dialog:**
 - Title: "Restart Recommended"
-- Message: "A restart is recommended to complete the installation. Would you like to restart now?"
+- Message: "A restart is recommended after performing any installation. Would you like to restart now?"
 - Button 1: "Restart Now"
 - Button 2: "Later"
 
