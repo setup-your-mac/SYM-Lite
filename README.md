@@ -1,3 +1,5 @@
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite)
+
 # SYM-Lite
 
 > **SYM-Lite** is a lean, purpose-built script for executing Jamf Pro Policy [Custom Triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies) _and / or_ [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) through a unified [swiftDialog](https://swiftdialog.app) selection interface
