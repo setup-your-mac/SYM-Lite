@@ -16,10 +16,10 @@
 #
 # HISTORY
 #
-# Version 1.0.0b2, 29-Mar-2026, Dan K. Snelson (@dan-snelson)
-#   - Replaced the plain completion dialog with a richer, end-user-facing software results report
-#   - Added dynamic completion report list items sorted alphabetically by software name
-#   - Updated interactive all-skipped behavior to show the completion report while still skipping restart
+# Version 1.0.0b3, 02-Apr-2026, Dan K. Snelson (@dan-snelson)
+#   - Added an organization-level switch to hide Jamf policy items and skip Jamf execution
+#   - Updated silent CSV parsing to warn and skip Jamf item IDs when Jamf policy items are disabled
+#   - Refined Inspect Mode messaging to reflect the selected item types
 #
 ####################################################################################################
 
@@ -36,7 +36,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.0.0b2"
+scriptVersion="1.0.0b3"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -84,6 +84,9 @@ organizationInstallomatorFile="/Library/Management/AppAutoPatch/Installomator/In
 # Organization's Jamf Binary Path
 jamfBinary="/usr/local/bin/jamf"
 
+# Enable or disable Jamf policy items
+enableJamfPolicyItems="true"
+
 # Organization's Overlayicon URL
 organizationOverlayiconURL="https://swiftdialog.app/_astro/dialog_logo.CZF0LABZ_ZjWz8w.webp"
 
@@ -120,6 +123,8 @@ jamfPolicyItems=(
     "appleXcode | Xcode | /Applications/Xcode.app | https://usw2.ics.services.jamfcloud.com/icon/hash_583afb5af440479d642b3c35ec4ec3ad06c74ec814dba9af84e4e69202edf62a"
     "homebrew | Homebrew | /opt/homebrew/bin/brew | https://usw2.ics.services.jamfcloud.com/icon/hash_9edff3eb98482a1aaf17f8560488f7b500cc7dc64955b8a9027b3801cab0fd82"
 )
+
+configuredJamfPolicyItems=("${jamfPolicyItems[@]}")
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -295,6 +300,50 @@ function parseJamfPolicyItem() {
     itemDisplayName="${parts[2]}"
     itemValidationPath="${parts[3]}"
     itemIconURL="${parts[4]}"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Normalize Jamf Policy Item Availability
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function normalizeJamfPolicyItems() {
+    local jamfPolicyItemsSetting="${enableJamfPolicyItems:l}"
+
+    if [[ "${jamfPolicyItemsSetting}" != "true" && "${jamfPolicyItemsSetting}" != "false" ]]; then
+        warning "Invalid enableJamfPolicyItems value '${enableJamfPolicyItems}'; defaulting to true"
+        enableJamfPolicyItems="true"
+        jamfPolicyItemsSetting="true"
+    fi
+
+    if [[ "${jamfPolicyItemsSetting}" == "true" ]]; then
+        jamfPolicyItems=("${configuredJamfPolicyItems[@]}")
+    else
+        jamfPolicyItems=()
+    fi
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Check Configured Jamf Policy Item
+# Input: Item ID
+# Output: 0 if item exists in configuredJamfPolicyItems, 1 otherwise
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function isConfiguredJamfPolicyItem() {
+    local itemID="$1"
+    local item
+
+    for item in "${configuredJamfPolicyItems[@]}"; do
+        local parts=("${(@s: | :)item}")
+        if [[ "${parts[1]}" == "${itemID}" ]]; then
+            return 0
+        fi
+    done
+
+    return 1
 }
 
 
@@ -669,6 +718,20 @@ dialogCheck
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Pre-flight Check: Normalize Jamf Policy Item Availability
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+normalizeJamfPolicyItems
+
+if [[ "${enableJamfPolicyItems:l}" == "true" ]]; then
+    preFlight "Jamf policy items enabled (${#jamfPolicyItems[@]} configured)"
+else
+    preFlight "Jamf policy items disabled by configuration"
+fi
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Pre-flight Check: Validate Logged-in System Accounts (Interactive Mode)
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -756,6 +819,9 @@ function createSYMLiteInspectConfig() {
     local totalItems=${#selectedItems[@]}
     local dialogTitle="Installing ${totalItems} Application"
     [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}s"
+    local messageText
+    local cachePathsJSON
+    local sideMessageJSON
 
     dialogInspectModeJSONFile=$( /usr/bin/mktemp "/var/tmp/dialogJSONFile_InspectMode_${organizationScriptName}.XXXXXX" )
     if [[ -z "${dialogInspectModeJSONFile}" || ! -e "${dialogInspectModeJSONFile}" ]]; then
@@ -807,6 +873,46 @@ function createSYMLiteInspectConfig() {
         
         ((guiIndex++))
     done
+
+    if [[ ${#selectedInstallomatorLabels[@]} -gt 0 && ${#selectedJamfPolicies[@]} -gt 0 ]]; then
+        messageText="Installing selected applications and executing policies. Items complete when files appear at their validation paths."
+        cachePathsJSON='        "/Library/Application Support/Installomator/Downloads",
+        "/Library/Application Support/JAMF/Downloads",
+        "/Library/Managed Installs/Cache"'
+        sideMessageJSON='        "Thank you for your patience.",
+        "Installation progress is monitored by watching for files to appear.",
+        "Applications are being installed via Installomator.",
+        "Policies are being executed via Jamf Pro.",
+        "Please wait while items are being processed.",
+        "Each item completes when its validation path appears.",
+        "This process may take several minutes.",
+        "The installation will complete automatically.",
+        "A restart may be required after completion."'
+    elif [[ ${#selectedJamfPolicies[@]} -gt 0 ]]; then
+        messageText="Executing selected policies. Items complete when files appear at their validation paths."
+        cachePathsJSON='        "/Library/Application Support/JAMF/Downloads",
+        "/Library/Managed Installs/Cache"'
+        sideMessageJSON='        "Thank you for your patience.",
+        "Progress is monitored by watching for files to appear.",
+        "Policies are being executed via Jamf Pro.",
+        "Please wait while items are being processed.",
+        "Each item completes when its validation path appears.",
+        "This process may take several minutes.",
+        "The installation will complete automatically.",
+        "A restart may be required after completion."'
+    else
+        messageText="Installing selected applications. Items complete when files appear at their validation paths."
+        cachePathsJSON='        "/Library/Application Support/Installomator/Downloads",
+        "/Library/Managed Installs/Cache"'
+        sideMessageJSON='        "Thank you for your patience.",
+        "Installation progress is monitored by watching for files to appear.",
+        "Applications are being installed via Installomator.",
+        "Please wait while items are being processed.",
+        "Each item completes when its validation path appears.",
+        "This process may take several minutes.",
+        "The installation will complete automatically.",
+        "A restart may be required after completion."'
+    fi
     
     # Create the full JSON configuration
     # Note: Inspect Mode uses dual monitoring:
@@ -816,7 +922,7 @@ function createSYMLiteInspectConfig() {
 {
     "preset": "preset${organizationPreset}",
     "title": "${dialogTitle}",
-    "message": "Installing selected applications and executing policies. Items complete when files appear at their validation paths.",
+    "message": "${messageText}",
     "icon": "${mainDialogIcon}",
     "overlayicon": "${organizationOverlayiconURL}",
     "iconsize": 120,
@@ -828,21 +934,11 @@ function createSYMLiteInspectConfig() {
         "startFromEnd": true
     },
     "cachePaths": [
-        "/Library/Application Support/Installomator/Downloads",
-        "/Library/Application Support/JAMF/Downloads",
-        "/Library/Managed Installs/Cache"
+${cachePathsJSON}
     ],
     "scanInterval": 2,
     "sideMessage": [
-        "Thank you for your patience.",
-        "Installation progress is monitored by watching for files to appear.",
-        "Applications are being installed via Installomator.",
-        "Policies are being executed via Jamf Pro.",
-        "Please wait while items are being processed.",
-        "Each item completes when its validation path appears.",
-        "This process may take several minutes.",
-        "The installation will complete automatically.",
-        "A restart may be required after completion."
+${sideMessageJSON}
     ],
     "sideInterval": 8,
     "highlightColor": "#51a3ef",
@@ -945,7 +1041,11 @@ function parseOperationsCSV() {
                 selectedItems+=("${itemID}")
             fi
         else
-            warning "Unknown item ID in CSV: '${itemID}'"
+            if [[ "${enableJamfPolicyItems:l}" != "true" ]] && isConfiguredJamfPolicyItem "${itemID}"; then
+                warning "Skipping CSV item '${itemID}': Jamf policy items are disabled"
+            else
+                warning "Unknown item ID in CSV: '${itemID}'"
+            fi
         fi
     done
     IFS="${oldIFS}"
@@ -1504,6 +1604,9 @@ function promptForRestart() {
 
 notice "SYM-Lite initialized successfully"
 notice "Configuration: ${#installomatorLabels[@]} Installomator labels, ${#jamfPolicyItems[@]} Jamf policy items"
+if [[ "${enableJamfPolicyItems:l}" != "true" ]]; then
+    notice "Jamf policy items are disabled by configuration"
+fi
 notice "Operation mode: ${operationMode}"
 
 # Phase 2: Show selection dialog

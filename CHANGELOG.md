@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.0.0b3 - 02-Apr-2026
+- Added an organization-level switch to hide Jamf policy items from the UI and skip Jamf execution.
+- Updated silent mode CSV parsing to warn and skip Jamf item IDs when Jamf policy items are disabled.
+- Refined Inspect Mode messaging so it reflects the selected item types.
+
 ## 1.0.0b2 - 29-Mar-2026
 - Replaced the plain completion dialog with a richer end-user completion report.
 - Added per-item completion rows sorted alphabetically by display name.
