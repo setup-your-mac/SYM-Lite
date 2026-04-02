@@ -817,8 +817,7 @@ preFlight "Pre-flight checks complete!"
 
 function createSYMLiteInspectConfig() {
     local totalItems=${#selectedItems[@]}
-    local dialogTitle="Installing ${totalItems} Application"
-    [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}s"
+    local dialogTitle=""
     local messageText
     local cachePathsJSON
     local sideMessageJSON
@@ -875,6 +874,8 @@ function createSYMLiteInspectConfig() {
     done
 
     if [[ ${#selectedInstallomatorLabels[@]} -gt 0 && ${#selectedJamfPolicies[@]} -gt 0 ]]; then
+        dialogTitle="Processing ${totalItems} Item"
+        [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}s"
         messageText="Installing selected applications and executing policies. Items complete when files appear at their validation paths."
         cachePathsJSON='        "/Library/Application Support/Installomator/Downloads",
         "/Library/Application Support/JAMF/Downloads",
@@ -889,6 +890,8 @@ function createSYMLiteInspectConfig() {
         "The installation will complete automatically.",
         "A restart may be required after completion."'
     elif [[ ${#selectedJamfPolicies[@]} -gt 0 ]]; then
+        dialogTitle="Executing ${totalItems} Policy"
+        [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}ies"
         messageText="Executing selected policies. Items complete when files appear at their validation paths."
         cachePathsJSON='        "/Library/Application Support/JAMF/Downloads",
         "/Library/Managed Installs/Cache"'
@@ -901,6 +904,8 @@ function createSYMLiteInspectConfig() {
         "The installation will complete automatically.",
         "A restart may be required after completion."'
     else
+        dialogTitle="Installing ${totalItems} Application"
+        [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}s"
         messageText="Installing selected applications. Items complete when files appear at their validation paths."
         cachePathsJSON='        "/Library/Application Support/Installomator/Downloads",
         "/Library/Managed Installs/Cache"'
