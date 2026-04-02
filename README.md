@@ -2,7 +2,7 @@
 
 # SYM-Lite (1.0.0b3)
 
-> **SYM-Lite** is a lean, purpose-built script for executing Jamf Pro Policy [Custom Triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies) _and / or_ [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) through a unified [swiftDialog](https://swiftdialog.app) selection interface
+> **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) — and / or Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies) — all through a unified [swiftDialog](https://swiftdialog.app) selection interface
 
 ## Screenshots
 
