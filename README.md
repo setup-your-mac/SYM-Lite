@@ -1,8 +1,8 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite)
 
-# SYM-Lite
+# SYM-Lite (1.0.0b3)
 
-> **SYM-Lite** is a lean, purpose-built script for executing Jamf Pro Policy [Custom Triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies) _and / or_ [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) through a unified [swiftDialog](https://swiftdialog.app) selection interface
+> **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) — and / or Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies) — all through a unified [swiftDialog](https://swiftdialog.app) selection interface
 
 ## Screenshots
 
@@ -93,6 +93,16 @@ jamfPolicyItems=(
 - Full URL: `https://...`
 - SF Symbol: `SF=symbolname,weight=semibold,colour1=auto,colour2=auto`
 
+### Disabling Jamf Policy Items
+
+If your environment does not use Jamf Pro, set `enableJamfPolicyItems="false"` near the top of `SYM-Lite.zsh`.
+
+When Jamf policy items are disabled:
+- Jamf policy items do not appear in the interactive selection UI
+- Jamf policy items do not execute
+- Jamf binary pre-flight validation is skipped
+- Silent mode warns and skips Jamf item IDs in the CSV input
+
 ---
 
 ## Usage
@@ -136,6 +146,7 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,googlechrome"
 - No Inspect Mode or completion dialogs
 - No restart prompt
 - Same pre-flight checks still run, including `swiftDialog` validation / installation
+- If Jamf policy items are disabled, Jamf item IDs in the CSV are warned and skipped
 - Exits with an error if the CSV contains no valid item IDs
 - Suitable for automated deployment
 
@@ -154,7 +165,7 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,googlechrome"
     - Edit `organizationInstallomatorFile` variable to customize
   - If the configured file exists but is zero bytes, pre-flight exits with a fatal error
   - If the binary is missing, pre-flight logs warnings and selected Installomator labels will fail at execution time
-- **Jamf Pro Binary** — Required for selected Jamf policy items to succeed
+- **Jamf Pro Binary** — Required only when `enableJamfPolicyItems="true"` and Jamf policy items are configured
   - Default path: `/usr/local/bin/jamf`
   - If the binary is missing, pre-flight logs warnings and selected Jamf policy items will fail at execution time
 
@@ -166,8 +177,9 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,googlechrome"
 PRE-FLIGHT CHECKS
   ├─ Verify root
   ├─ Check/install swiftDialog
+  ├─ Normalize Jamf item availability from configuration
   ├─ Verify Installomator (if items configured; rejects zero-byte file)
-  └─ Verify Jamf binary (if items configured)
+  └─ Verify Jamf binary (if enabled and items configured)
        ↓
 SELECTION INTERFACE
   ├─ Show dialog (interactive) or parse CSV (silent)
@@ -316,6 +328,7 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 | `organizationInstallomatorFile` | `/Library/Management/...` | Path to Installomator.sh |
 | `installomatorLog` | `/var/log/Installomator.log` | Installomator log path for monitoring |
 | `jamfBinary` | `/usr/local/bin/jamf` | Path to jamf binary |
+| `enableJamfPolicyItems` | `"true"` | Show and execute Jamf policy items |
 | `organizationOverlayiconURL` | swiftDialog logo | Overlay icon URL |
 | `mainDialogIcon` | GitHub raw `SYM_icon.png` URL | Main dialog icon |
 | `fontSize` | `"14"` | Dialog message font size |
@@ -379,6 +392,7 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 - If `swiftDialog` is unavailable and cannot be installed, the script exits during pre-flight
 - If `Installomator.sh` is missing, pre-flight logs warnings but selected Installomator labels fail when executed
 - If the `jamf` binary is missing, pre-flight logs warnings but selected Jamf policy items fail when executed
+- If `enableJamfPolicyItems="false"`, Jamf policy items are hidden and the `jamf` binary is not required
 
 ### Interactive mode exits before showing dialogs
 - Verify a real user is logged in at the macOS desktop
@@ -403,10 +417,10 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 
 ### Before Production
 - [ ] Edit `installomatorLabels` array with organization's apps
-- [ ] Edit `jamfPolicyItems` array with organization's policies
+- [ ] Edit `jamfPolicyItems` array with organization's policies, or disable Jamf policy items if unused
 - [ ] Update icon URLs to organization's icons
 - [ ] Verify Installomator path matches environment
-- [ ] Verify Jamf binary path matches environment
+- [ ] Verify Jamf binary path matches environment if Jamf policy items are enabled
 - [ ] Test interactive mode with single item
 - [ ] Test silent mode with CSV input
 - [ ] Test mixed selection (Installomator + Jamf)
