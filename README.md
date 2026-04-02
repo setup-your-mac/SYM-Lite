@@ -465,6 +465,6 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 
 ---
 
-**Version:** 1.0.0b1  
-**Date:** 28-Mar-2026  
+**Version:** 1.0.0b3  
+**Date:** 02-Apr-2026  
 **Author:** Dan K. Snelson (@dan-snelson)
