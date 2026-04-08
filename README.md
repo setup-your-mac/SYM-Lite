@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite)
 
-# SYM-Lite (1.0.0b4)
+# SYM-Lite (1.0.0b5)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) — and / or Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies) — all through a unified [swiftDialog](https://swiftdialog.app) selection interface
 
@@ -40,6 +40,7 @@
 ✓ **Interactive selection UI** — User-friendly checkbox dialog with per-item icons; optional install-state labels disable already-installed items and exit cleanly when nothing remains selectable  
 ✓ **Alphabetical sorting** — All items sorted together by display name in selection dialog  
 ✓ **Silent mode** — CSV-based automation support  
+✓ **Early Installomator label validation** — Configured Installomator labels are verified against the active Installomator file before they can appear or run  
 ✓ **Inspect Mode monitoring** — Real-time progress with rich status updates for Installomator labels  
 ✓ **Log monitoring** — Parses Installomator.log for intermediate states (downloading, installing, verifying)  
 ✓ **Path-based validation** — Pre/post-execution checks via file system monitoring  
@@ -69,6 +70,8 @@ installomatorLabels=(
     "zoom | Zoom | /Applications/zoom.us.app | https://icon.url"
 )
 ```
+
+At runtime, SYM-Lite validates each configured label against `organizationInstallomatorFile` before building the picker or accepting silent-mode CSV input. If a label is missing from that Installomator file, SYM-Lite logs an error and removes it from the current run.
 
 ### Adding Jamf Policy Items
 
@@ -122,7 +125,7 @@ sudo ~/Downloads/SYM-Lite.zsh
 4. Completion report shows one row per selected item
 5. Optional restart prompt
 
-If `selectionDialogStatusSublabelsEnabled="true"` and every configured item is already installed, interactive mode shows an informational dialog and exits without launching Inspect Mode.
+If `selectionDialogStatusSublabelsEnabled="true"` and every remaining valid item is already installed, interactive mode shows an informational dialog and exits without launching Inspect Mode. If no valid items remain after configuration validation, interactive mode exits cleanly with a generic unavailable-items message.
 
 **Interactive mode requirements:**
 - Requires an active logged-in GUI user
@@ -148,6 +151,7 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,googlechrome"
 - No Inspect Mode or completion dialogs
 - No restart prompt
 - Same pre-flight checks still run, including `swiftDialog` validation / installation
+- Installomator labels filtered out during pre-flight validation are warned and skipped in the CSV input
 - If Jamf policy items are disabled, Jamf item IDs in the CSV are warned and skipped
 - Exits with an error if the CSV contains no valid item IDs
 - Suitable for automated deployment
@@ -163,10 +167,11 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,googlechrome"
 
 ### External Command Dependencies
 - **Installomator** — Required for selected Installomator labels to succeed
+- Configured Installomator labels are validated early against the active `organizationInstallomatorFile`
   - Default path: `/Library/Management/AppAutoPatch/Installomator/Installomator.sh` [:link:](https://github.com/App-Auto-Patch/App-Auto-Patch/wiki)
     - Edit `organizationInstallomatorFile` variable to customize
-  - If the configured file exists but is zero bytes, pre-flight exits with a fatal error
-  - If the binary is missing, pre-flight logs warnings and selected Installomator labels will fail at execution time
+  - If the configured file is missing, unreadable, non-executable, or zero bytes, pre-flight exits with a fatal error
+  - If a configured label does not exist in that Installomator file, SYM-Lite logs an error and removes it from the current run
 - **Jamf Pro Binary** — Required only when `enableJamfPolicyItems="true"` and Jamf policy items are configured
   - Default path: `/usr/local/bin/jamf`
   - If the binary is missing, pre-flight logs warnings and selected Jamf policy items will fail at execution time
@@ -180,7 +185,7 @@ PRE-FLIGHT CHECKS
   ├─ Verify root
   ├─ Check/install swiftDialog
   ├─ Normalize Jamf item availability from configuration
-  ├─ Verify Installomator (if items configured; rejects zero-byte file)
+  ├─ Validate Installomator file and normalize Installomator labels
   └─ Verify Jamf binary (if enabled and items configured)
        ↓
 SELECTION INTERFACE

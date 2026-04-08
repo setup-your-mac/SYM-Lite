@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.0.0b5 - 08-Apr-2026
+- Added pre-flight validation for configured Installomator labels against the active Installomator file.
+- Filtered unavailable Installomator labels out of the interactive picker, silent-mode CSV parsing, and runtime item lookups.
+- Updated the no-selectable-items dialog so filtered labels do not appear as already installed.
+- Changed Installomator dependency handling to fail fast when the configured file is missing, unreadable, non-executable, or zero bytes.
+- Updated release documentation for early Installomator label validation.
+
 ## 1.0.0b4 - 08-Apr-2026
 - Added validation-path status text to each interactive selection dialog row.
 - Added an organization-level toggle to hide selection dialog status sublabels (i.e., `selectionDialogStatusSublabelsEnabled="false"`)
