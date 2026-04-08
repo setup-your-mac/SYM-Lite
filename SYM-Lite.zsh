@@ -1727,7 +1727,7 @@ function showSelectionDialog() {
     local rc
 
     # Build message
-    baseMessage="**$(date +'Happy %A,') ${loggedInUserFirstname}!**\n\nSelect one or more approved items to process."
+    baseMessage="**$(date +'Happy %A,') ${loggedInUserFirstname}!**\n\nSelect items to install; Homebrew casks and formulae are available **after** \`brew\` has been installed."
 
     # Build unified checkbox list (Installomator + Jamf, sorted together by display name)
     getSelectionDialogCheckboxesJSON
