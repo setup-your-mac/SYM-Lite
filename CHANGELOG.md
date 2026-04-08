@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.0.0b6 - 08-Apr-2026
+- Added approved Homebrew cask/formula items as a third item type in the unified picker and silent-mode CSV flow.
+- Added Homebrew binary detection, configuration toggles, and invalid-item filtering during pre-flight.
+- Added user-context Homebrew execution with optional one-time `brew update` support.
+- Expanded Inspect Mode, completion reporting, and user-facing copy to support Homebrew items alongside Installomator labels and Jamf policies.
+- Updated project documentation and repo instructions for Homebrew item support.
+
 ## 1.0.0b5 - 08-Apr-2026
 - Added pre-flight validation for configured Installomator labels against the active Installomator file.
 - Filtered unavailable Installomator labels out of the interactive picker, silent-mode CSV parsing, and runtime item lookups.
