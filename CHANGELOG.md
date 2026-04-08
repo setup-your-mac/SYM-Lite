@@ -7,6 +7,7 @@ All notable changes to this project are documented in this file.
 - Filtered unavailable Installomator labels out of the interactive picker, silent-mode CSV parsing, and runtime item lookups.
 - Updated the no-selectable-items dialog so filtered labels do not appear as already installed.
 - Changed Installomator dependency handling to fail fast when the configured file is missing, unreadable, non-executable, or zero bytes.
+- Added clearer fatal handling when the configured Installomator path is not a regular file or the label case statement cannot be parsed.
 - Updated release documentation for early Installomator label validation.
 
 ## 1.0.0b4 - 08-Apr-2026

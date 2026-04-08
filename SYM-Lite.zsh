@@ -430,7 +430,7 @@ function getAvailableInstallomatorLabels() {
     local labelArm=""
     local labelAlias=""
 
-    labelArmsOutput=$(/usr/bin/awk '
+    if ! labelArmsOutput=$(/usr/bin/awk '
         BEGIN {
             inLabelCase = 0
             caseDepth = 0
@@ -463,7 +463,9 @@ function getAvailableInstallomatorLabels() {
                 print labelArm
             }
         }
-    ' "${organizationInstallomatorFile}")
+    ' "${organizationInstallomatorFile}"); then
+        return 1
+    fi
 
     while IFS= read -r labelArm; do
         [[ -z "${labelArm}" ]] && continue
@@ -498,6 +500,7 @@ function normalizeInstallomatorLabels() {
     local -a normalizedInstallomatorLabels=()
     local -a availableInstallomatorLabels=()
     local -A availableInstallomatorLabelMap=()
+    local availableLabelsOutput=""
     local item=""
     local label=""
     local displayName=""
@@ -512,6 +515,8 @@ function normalizeInstallomatorLabels() {
 
     if [[ ! -e "${organizationInstallomatorFile}" ]]; then
         fatal "Installomator not found at ${organizationInstallomatorFile}"
+    elif [[ ! -f "${organizationInstallomatorFile}" ]]; then
+        fatal "Installomator is not a regular file at ${organizationInstallomatorFile}"
     elif [[ ! -r "${organizationInstallomatorFile}" ]]; then
         fatal "Installomator is not readable at ${organizationInstallomatorFile}"
     elif [[ ! -x "${organizationInstallomatorFile}" ]]; then
@@ -521,7 +526,16 @@ function normalizeInstallomatorLabels() {
     fi
 
     preFlight "Installomator found at ${organizationInstallomatorFile}; validating configured labels"
-    availableInstallomatorLabels=($(getAvailableInstallomatorLabels))
+
+    if ! availableLabelsOutput="$(getAvailableInstallomatorLabels)"; then
+        fatal "Failed to parse Installomator labels from ${organizationInstallomatorFile}"
+    fi
+
+    availableInstallomatorLabels=("${(@f)availableLabelsOutput}")
+
+    if [[ ${#availableInstallomatorLabels[@]} -eq 0 ]]; then
+        fatal "No Installomator labels were parsed from ${organizationInstallomatorFile}; verify the file format matches Installomator's label case statement"
+    fi
 
     for availableLabel in "${availableInstallomatorLabels[@]}"; do
         availableInstallomatorLabelMap[$availableLabel]=1

@@ -170,7 +170,8 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,googlechrome"
 - Configured Installomator labels are validated early against the active `organizationInstallomatorFile`
   - Default path: `/Library/Management/AppAutoPatch/Installomator/Installomator.sh` [:link:](https://github.com/App-Auto-Patch/App-Auto-Patch/wiki)
     - Edit `organizationInstallomatorFile` variable to customize
-  - If the configured file is missing, unreadable, non-executable, or zero bytes, pre-flight exits with a fatal error
+  - If the configured file is missing, not a regular file, unreadable, non-executable, or zero bytes, pre-flight exits with a fatal error
+  - If SYM-Lite cannot parse the Installomator label case statement from that file, pre-flight exits with a fatal error
   - If a configured label does not exist in that Installomator file, SYM-Lite logs an error and removes it from the current run
 - **Jamf Pro Binary** — Required only when `enableJamfPolicyItems="true"` and Jamf policy items are configured
   - Default path: `/usr/local/bin/jamf`
