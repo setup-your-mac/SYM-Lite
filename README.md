@@ -37,7 +37,7 @@
 ## Key Features
 
 ✓ **Dual execution support** — Installomator labels AND Jamf Pro policies in single session  
-✓ **Interactive selection UI** — User-friendly checkbox dialog with per-item icons; install-state labels and disabled installed items are optional  
+✓ **Interactive selection UI** — User-friendly checkbox dialog with per-item icons; optional install-state labels disable already-installed items and exit cleanly when nothing remains selectable  
 ✓ **Alphabetical sorting** — All items sorted together by display name in selection dialog  
 ✓ **Silent mode** — CSV-based automation support  
 ✓ **Inspect Mode monitoring** — Real-time progress with rich status updates for Installomator labels  
@@ -121,6 +121,8 @@ sudo ~/Downloads/SYM-Lite.zsh
 3. Inspect Mode dialog launches showing real-time progress
 4. Completion report shows one row per selected item
 5. Optional restart prompt
+
+If `selectionDialogStatusSublabelsEnabled="true"` and every configured item is already installed, interactive mode shows an informational dialog and exits without launching Inspect Mode.
 
 **Interactive mode requirements:**
 - Requires an active logged-in GUI user
@@ -332,7 +334,7 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 | `organizationOverlayiconURL` | swiftDialog logo | Overlay icon URL |
 | `mainDialogIcon` | GitHub raw `SYM_icon.png` URL | Main dialog icon |
 | `fontSize` | `"14"` | Dialog message font size |
-| `selectionDialogStatusSublabelsEnabled` | `"true"` | Show install-state sublabels and disable already-installed items in the interactive picker |
+| `selectionDialogStatusSublabelsEnabled` | `"true"` | Show install-state sublabels, disable already-installed items in the interactive picker, and exit cleanly if no selectable items remain |
 | `restartPromptEnabled` | `"true"` | Show restart prompt after completion |
 | `scriptLog` | `/var/log/...log` | Client-side log path |
 

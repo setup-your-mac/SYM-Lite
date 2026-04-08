@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 - Added validation-path status text to each interactive selection dialog row.
 - Added an organization-level toggle to hide selection dialog status sublabels (i.e., `selectionDialogStatusSublabelsEnabled="false"`)
 - Disabled already-installed items while preserving unified sorting, icons, and switch styling in the picker.
+- Fixed interactive picker selection parsing by using stable checkbox names and exiting cleanly when all items are already installed.
 - Updated release documentation for the new selection dialog feedback.
 
 ## 1.0.0b3 - 02-Apr-2026

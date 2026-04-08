@@ -20,6 +20,7 @@
 # - Added validation-path status text to each interactive selection dialog row.
 # - Added an organization-level toggle to hide selection dialog status sublabels (i.e., `selectionDialogStatusSublabelsEnabled="false"`)
 # - Disabled already-installed items while preserving unified sorting, icons, and switch styling in the picker.
+# - Fixed interactive picker parsing by using stable checkbox names and exiting cleanly when no selectable items remain.
 # - Updated release documentation for the new selection dialog feedback.
 #
 ####################################################################################################
@@ -159,6 +160,7 @@ completionDialogJSONFile=""
 dialogPID=""
 dialogTemporaryDirectory=""
 selectionDialogOptionRecords=()
+selectionDialogTotalItemCount=0
 
 
 
@@ -353,8 +355,10 @@ function getSelectionDialogCheckboxesJSON() {
     local checkboxDisabled="false"
     local itemID=""
     local existingLabel=""
+    local escapedItemID=""
 
     selectionDialogOptionRecords=()
+    selectionDialogTotalItemCount=0
 
     for item in "${installomatorLabels[@]}"; do
         local parts=("${(@s: | :)item}")
@@ -366,6 +370,7 @@ function getSelectionDialogCheckboxesJSON() {
     done
 
     for entry in "${(oi)allSortKeys[@]}"; do
+        ((selectionDialogTotalItemCount++))
         local entryParts=("${(@s: | :)entry}")
         local itemType="${entryParts[2]}"
         local itemConfig="${(j: | :)entryParts[3,-1]}"
@@ -391,12 +396,13 @@ function getSelectionDialogCheckboxesJSON() {
             checkboxDisabled="true"
         else
             checkboxDisabled="false"
-            selectionDialogOptionRecords+=("${checkboxLabel}"$'\t'"${itemID}")
+            selectionDialogOptionRecords+=("${itemID}")
         fi
 
         escapedCheckboxLabel=$(escapeJSONString "${checkboxLabel}")
+        escapedItemID=$(escapeJSONString "${itemID}")
         escapedIconURL=$(escapeJSONString "${itemIconURL}")
-        checkboxItemsJSON="${checkboxItemsJSON}${separator}{\"label\":\"${escapedCheckboxLabel}\",\"checked\":false,\"disabled\":${checkboxDisabled},\"icon\":\"${escapedIconURL}\"}"
+        checkboxItemsJSON="${checkboxItemsJSON}${separator}{\"label\":\"${escapedCheckboxLabel}\",\"name\":\"${escapedItemID}\",\"checked\":false,\"disabled\":${checkboxDisabled},\"icon\":\"${escapedIconURL}\"}"
         separator=","
     done
 
@@ -1176,23 +1182,17 @@ function parseDialogSelections() {
     selectedItems=()
 
     if [[ ${#selectionDialogOptionRecords[@]} -gt 0 ]]; then
-        local record=""
-        local dialogLabel=""
         local itemID=""
-        local escapedDialogLabel=""
 
-        for record in "${selectionDialogOptionRecords[@]}"; do
-            IFS=$'\t' read -r dialogLabel itemID <<< "${record}"
-
+        for itemID in "${selectionDialogOptionRecords[@]}"; do
             if command -v jq >/dev/null 2>&1; then
-                if echo "${output}" | jq -e --arg key "${dialogLabel}" '.[$key] == true' >/dev/null 2>&1; then
+                if echo "${output}" | jq -e --arg key "${itemID}" '.[$key] == true' >/dev/null 2>&1; then
                     selectedItems+=("${itemID}")
                 fi
                 continue
             fi
 
-            escapedDialogLabel=$(escapeJSONString "${dialogLabel}")
-            if echo "${output}" | grep -Fq "\"${escapedDialogLabel}\":true" || echo "${output}" | grep -Fq "\"${escapedDialogLabel}\": true"; then
+            if echo "${output}" | grep -Fq "\"${itemID}\":true" || echo "${output}" | grep -Fq "\"${itemID}\": true"; then
                 selectedItems+=("${itemID}")
             fi
         done
@@ -1228,6 +1228,34 @@ function parseDialogSelections() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Show No Selectable Items Dialog
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function showNoSelectableItemsDialog() {
+    requireLoggedInUser "display no selectable items dialog"
+
+    local messageText="There are no selectable items available right now."
+
+    if [[ ${selectionDialogTotalItemCount} -gt 0 ]] && [[ "${selectionDialogStatusSublabelsEnabled:l}" == "true" ]]; then
+        messageText="All configured items are already installed, so there is nothing new to install right now."
+    fi
+
+    runAsUser "${loggedInUser}" "${dialogBinary}" \
+        --title "${humanReadableScriptName}" \
+        --infotext "${scriptVersion}" \
+        --messagefont "size=${fontSize}" \
+        --message "${messageText}" \
+        --icon "${mainDialogIcon}" \
+        --button1text "Close" \
+        --height 325 \
+        --width 500 2>/dev/null
+
+    notice "No selectable items were available in the interactive picker"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Show Selection Dialog
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -1255,6 +1283,16 @@ function showSelectionDialog() {
 
     # Build unified checkbox list (Installomator + Jamf, sorted together by display name)
     checkboxesJSON=$(getSelectionDialogCheckboxesJSON)
+
+    if [[ ${selectionDialogTotalItemCount} -eq 0 ]]; then
+        errorOut "Interactive mode: no items are configured for selection"
+        return 1
+    fi
+
+    if [[ ${#selectionDialogOptionRecords[@]} -eq 0 ]]; then
+        showNoSelectableItemsDialog
+        quitScript 0
+    fi
 
     # Loop until at least one item is selected
     while true; do
