@@ -16,12 +16,12 @@
 #
 # HISTORY
 #
-# Version 1.0.0b4, 08-Apr-2026, Dan K. Snelson (@dan-snelson)
-# - Added validation-path status text to each interactive selection dialog row.
-# - Added an organization-level toggle to hide selection dialog status sublabels (i.e., `selectionDialogStatusSublabelsEnabled="false"`)
-# - Disabled already-installed items while preserving unified sorting, icons, and switch styling in the picker.
-# - Fixed interactive picker parsing by using stable checkbox names and exiting cleanly when no selectable items remain.
-# - Updated release documentation for the new selection dialog feedback.
+# Version 1.0.0b5, 08-Apr-2026, Dan K. Snelson (@dan-snelson)
+# - Added pre-flight validation for configured Installomator labels against the active Installomator file.
+# - Filtered unavailable Installomator labels out of the interactive picker, silent-mode CSV parsing, and runtime lookups.
+# - Updated the no-selectable-items dialog so filtered labels do not appear as already installed.
+# - Refined Installomator dependency handling to fail fast when the configured file is unusable.
+# - Updated release documentation for early Installomator label validation.
 #
 ####################################################################################################
 
@@ -38,7 +38,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.0.0b4"
+scriptVersion="1.0.0b5"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -117,8 +117,11 @@ installomatorLabels=(
     "charles | Charles Proxy | /Applications/Charles.app | https://use2.ics.services.jamfcloud.com/icon/hash_59b395ca81889a6d83deda8e6babc5ae4bc5931d36a72b738fe30b84d027593d"
     "docker | Docker | /Applications/Docker.app | https://usw2.ics.services.jamfcloud.com/icon/hash_a344dca5fdc0e86822e8f21ec91088e6591b1e292bdcebdee1281fbd794c2724"
     "jetbrainsintellijidea | IntelliJ IDEA | /Applications/IntelliJ IDEA.app | https://usw2.ics.services.jamfcloud.com/icon/hash_f669d73acc06297e1fc2f65245cfbdace03263f81aebf95444a8360a101b239d"
+    "pique | Pique | /Applications/Pique.app | https://usw2.ics.services.jamfcloud.com/icon/hash_7d2539860cca6ec5ea5a71cba2aee7d93b9534e4267c16f73c7035f3dc025b9c"
     "visualstudiocode | Visual Studio Code | /Applications/Visual Studio Code.app | https://use2.ics.services.jamfcloud.com/icon/hash_532094f99f6130f325a97ed6421d09d2a416e269f284304d39c21020565056ed"
 )
+
+configuredInstallomatorLabels=("${installomatorLabels[@]}")
 
 # Jamf Pro Policies
 # Format: "trigger | Display Name | Validation Path | Icon URL"
@@ -161,6 +164,8 @@ dialogPID=""
 dialogTemporaryDirectory=""
 selectionDialogOptionRecords=()
 selectionDialogTotalItemCount=0
+selectionDialogDisabledItemCount=0
+selectionDialogCheckboxesJSON=""
 
 
 
@@ -359,6 +364,7 @@ function getSelectionDialogCheckboxesJSON() {
 
     selectionDialogOptionRecords=()
     selectionDialogTotalItemCount=0
+    selectionDialogDisabledItemCount=0
 
     for item in "${installomatorLabels[@]}"; do
         local parts=("${(@s: | :)item}")
@@ -394,6 +400,7 @@ function getSelectionDialogCheckboxesJSON() {
 
         if [[ "${selectionDialogStatusSublabelsEnabled:l}" == "true" ]] && isValidationPathPresent "${itemValidationPath}"; then
             checkboxDisabled="true"
+            ((selectionDialogDisabledItemCount++))
         else
             checkboxDisabled="false"
             selectionDialogOptionRecords+=("${itemID}")
@@ -406,7 +413,149 @@ function getSelectionDialogCheckboxesJSON() {
         separator=","
     done
 
-    print -r -- "[${checkboxItemsJSON}]"
+    selectionDialogCheckboxesJSON="[${checkboxItemsJSON}]"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Get Available Installomator Labels
+# Parses the active Installomator file for top-level case arms under `case $label in`
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function getAvailableInstallomatorLabels() {
+    local -a availableLabels=()
+    local -A availableLabelMap=()
+    local labelArmsOutput=""
+    local labelArm=""
+    local labelAlias=""
+
+    if ! labelArmsOutput=$(/usr/bin/awk '
+        BEGIN {
+            inLabelCase = 0
+            caseDepth = 0
+        }
+
+        /^[[:space:]]*case[[:space:]]+\$label[[:space:]]+in[[:space:]]*$/ {
+            inLabelCase = 1
+            caseDepth = 1
+            next
+        }
+
+        inLabelCase {
+            if ($0 ~ /^[[:space:]]*case[[:space:]].*[[:space:]]+in[[:space:]]*$/) {
+                caseDepth++
+                next
+            }
+
+            if ($0 ~ /^[[:space:]]*esac([[:space:]]*;.*)?[[:space:]]*$/) {
+                caseDepth--
+                if (caseDepth == 0) {
+                    exit
+                }
+                next
+            }
+
+            if (caseDepth == 1 && $0 ~ /^[[:space:]]*[A-Za-z0-9_*][A-Za-z0-9_|-]*\)[[:space:]]*$/) {
+                labelArm = $0
+                sub(/^[[:space:]]*/, "", labelArm)
+                sub(/\)[[:space:]]*$/, "", labelArm)
+                print labelArm
+            }
+        }
+    ' "${organizationInstallomatorFile}"); then
+        return 1
+    fi
+
+    while IFS= read -r labelArm; do
+        [[ -z "${labelArm}" ]] && continue
+
+        for labelAlias in "${(@s:|:)labelArm}"; do
+            labelAlias="${labelAlias// /}"
+
+            case "${labelAlias}" in
+                longversion|valuesfromarguments|'*')
+                    continue
+                    ;;
+            esac
+
+            if (( ! ${+availableLabelMap[$labelAlias]} )); then
+                availableLabelMap[$labelAlias]=1
+                availableLabels+=("${labelAlias}")
+            fi
+        done
+    done <<< "${labelArmsOutput}"
+
+    print -l -- "${availableLabels[@]}"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Normalize Installomator Label Availability
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function normalizeInstallomatorLabels() {
+    local configuredLabelCount="${#configuredInstallomatorLabels[@]}"
+    local -a normalizedInstallomatorLabels=()
+    local -a availableInstallomatorLabels=()
+    local -A availableInstallomatorLabelMap=()
+    local availableLabelsOutput=""
+    local item=""
+    local label=""
+    local displayName=""
+    local filteredLabelCount=0
+    local availableLabel=""
+
+    if [[ ${configuredLabelCount} -eq 0 ]]; then
+        installomatorLabels=()
+        preFlight "No Installomator labels configured"
+        return 0
+    fi
+
+    if [[ ! -e "${organizationInstallomatorFile}" ]]; then
+        fatal "Installomator not found at ${organizationInstallomatorFile}"
+    elif [[ ! -f "${organizationInstallomatorFile}" ]]; then
+        fatal "Installomator is not a regular file at ${organizationInstallomatorFile}"
+    elif [[ ! -r "${organizationInstallomatorFile}" ]]; then
+        fatal "Installomator is not readable at ${organizationInstallomatorFile}"
+    elif [[ ! -x "${organizationInstallomatorFile}" ]]; then
+        fatal "Installomator is not executable at ${organizationInstallomatorFile}"
+    elif [[ ! -s "${organizationInstallomatorFile}" ]]; then
+        fatal "Installomator at ${organizationInstallomatorFile} is zero bytes"
+    fi
+
+    preFlight "Installomator found at ${organizationInstallomatorFile}; validating configured labels"
+
+    if ! availableLabelsOutput="$(getAvailableInstallomatorLabels)"; then
+        fatal "Failed to parse Installomator labels from ${organizationInstallomatorFile}"
+    fi
+
+    availableInstallomatorLabels=("${(@f)availableLabelsOutput}")
+
+    if [[ ${#availableInstallomatorLabels[@]} -eq 0 ]]; then
+        fatal "No Installomator labels were parsed from ${organizationInstallomatorFile}; verify the file format matches Installomator's label case statement"
+    fi
+
+    for availableLabel in "${availableInstallomatorLabels[@]}"; do
+        availableInstallomatorLabelMap[$availableLabel]=1
+    done
+
+    for item in "${configuredInstallomatorLabels[@]}"; do
+        parseInstallomatorItem "${item}"
+        label="${itemLabel}"
+        displayName="${itemDisplayName}"
+
+        if (( ${+availableInstallomatorLabelMap[$label]} )); then
+            normalizedInstallomatorLabels+=("${item}")
+        else
+            errorOut "Configured Installomator label '${label}' (${displayName}) is not available in ${organizationInstallomatorFile}; hiding it from this run"
+            ((filteredLabelCount++))
+        fi
+    done
+
+    installomatorLabels=("${normalizedInstallomatorLabels[@]}")
+    preFlight "Installomator label validation complete: ${#installomatorLabels[@]} available, ${filteredLabelCount} filtered"
 }
 
 
@@ -444,6 +593,28 @@ function isConfiguredJamfPolicyItem() {
     local item
 
     for item in "${configuredJamfPolicyItems[@]}"; do
+        local parts=("${(@s: | :)item}")
+        if [[ "${parts[1]}" == "${itemID}" ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Check Configured Installomator Label
+# Input: Item ID
+# Output: 0 if item exists in configuredInstallomatorLabels, 1 otherwise
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function isConfiguredInstallomatorLabel() {
+    local itemID="$1"
+    local item
+
+    for item in "${configuredInstallomatorLabels[@]}"; do
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
             return 0
@@ -879,19 +1050,10 @@ fi
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Pre-flight Check: Validate Installomator (if Installomator labels configured)
+# Pre-flight Check: Validate Installomator Labels
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-if [[ ${#installomatorLabels[@]} -gt 0 ]]; then
-    if [[ ! -x "${organizationInstallomatorFile}" ]]; then
-        warning "Installomator not found at ${organizationInstallomatorFile}"
-        warning "Installomator labels will be skipped"
-    elif [[ ! -s "${organizationInstallomatorFile}" ]]; then
-        fatal "Installomator at ${organizationInstallomatorFile} is zero bytes"
-    else
-        preFlight "Installomator found at ${organizationInstallomatorFile}"
-    fi
-fi
+normalizeInstallomatorLabels
 
 
 
@@ -1159,7 +1321,9 @@ function parseOperationsCSV() {
                 selectedItems+=("${itemID}")
             fi
         else
-            if [[ "${enableJamfPolicyItems:l}" != "true" ]] && isConfiguredJamfPolicyItem "${itemID}"; then
+            if isConfiguredInstallomatorLabel "${itemID}"; then
+                warning "Skipping CSV item '${itemID}': Installomator label is unavailable in ${organizationInstallomatorFile}"
+            elif [[ "${enableJamfPolicyItems:l}" != "true" ]] && isConfiguredJamfPolicyItem "${itemID}"; then
                 warning "Skipping CSV item '${itemID}': Jamf policy items are disabled"
             else
                 warning "Unknown item ID in CSV: '${itemID}'"
@@ -1236,7 +1400,9 @@ function showNoSelectableItemsDialog() {
 
     local messageText="There are no selectable items available right now."
 
-    if [[ ${selectionDialogTotalItemCount} -gt 0 ]] && [[ "${selectionDialogStatusSublabelsEnabled:l}" == "true" ]]; then
+    if [[ ${selectionDialogTotalItemCount} -gt 0 ]] \
+    && [[ "${selectionDialogStatusSublabelsEnabled:l}" == "true" ]] \
+    && [[ ${selectionDialogDisabledItemCount} -eq ${selectionDialogTotalItemCount} ]]; then
         messageText="All configured items are already installed, so there is nothing new to install right now."
     fi
 
@@ -1275,18 +1441,17 @@ function showSelectionDialog() {
     local warningMessage=""
     local messageText
     local dialogOutput
-    local checkboxesJSON=""
     local rc
 
     # Build message
     baseMessage="**$(date +'Happy %A,') ${loggedInUserFirstname}!**\n\nSelect one or more applications to install."
 
     # Build unified checkbox list (Installomator + Jamf, sorted together by display name)
-    checkboxesJSON=$(getSelectionDialogCheckboxesJSON)
+    getSelectionDialogCheckboxesJSON
 
     if [[ ${selectionDialogTotalItemCount} -eq 0 ]]; then
-        errorOut "Interactive mode: no items are configured for selection"
-        return 1
+        showNoSelectableItemsDialog
+        quitScript 0
     fi
 
     if [[ ${#selectionDialogOptionRecords[@]} -eq 0 ]]; then
@@ -1307,7 +1472,7 @@ function showSelectionDialog() {
             --messagefont "size=${fontSize}" \
             --message "${messageText}" \
             --icon "${mainDialogIcon}" \
-            --jsonstring "{\"checkbox\":${checkboxesJSON}}" \
+            --jsonstring "{\"checkbox\":${selectionDialogCheckboxesJSON}}" \
             --checkboxstyle "switch,large" \
             --json \
             --button1text "Install" \
