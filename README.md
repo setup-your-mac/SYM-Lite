@@ -119,6 +119,7 @@ homebrewItems=(
 
 **Important:**
 - Use `cask:` or `formula:` prefixes in the item ID
+- Homebrew examples and default validation paths in this repo assume Apple silicon with Homebrew installed in `/opt/homebrew`
 - Homebrew items are hidden for the current run if no working `brew` binary is available
 - Homebrew items also require a valid logged-in user because package installs run in user context rather than as `root`
 
@@ -216,6 +217,7 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,cask:docker,formula:no
 - **Homebrew Binary** — Required only when `enableHomebrewItems="true"` and Homebrew items are configured
   - Default detection order: `/opt/homebrew/bin/brew`, then `/usr/local/bin/brew`
   - Set `brewPath` to override detection with an organization-specific path
+  - Homebrew examples and default validation paths in this repo assume Apple silicon with Homebrew installed in `/opt/homebrew`
   - If no working `brew` binary is found, SYM-Lite hides Homebrew items from the current run and warns in the log
   - Homebrew items require a valid logged-in user because package installs run in user context rather than as `root`
 

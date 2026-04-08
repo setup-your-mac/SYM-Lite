@@ -24,7 +24,7 @@
   - `homebrewItems`
 - Each item is defined as:
   - `"identifier | displayName | validationPath | iconURL"`
-- `validationPath` is operationally important, not cosmetic. It drives pre-execution skip logic and Inspect Mode completion detection.
+- `validationPath` is operationally important, not cosmetic. It drives pre-execution skip logic and Inspect Mode completion detection. For Homebrew items, examples and default validation paths in this repo assume Apple silicon with Homebrew installed in `/opt/homebrew`.
 - The script processes selected items sequentially. There is no parallel execution layer.
 - Homebrew items run in the logged-in user context even though the script itself runs as `root`.
 
@@ -33,7 +33,7 @@
 - Because this repo requires swiftDialog 3.x, the effective minimum supported OS is **macOS 15**.
 - **Installomator** is expected at `/Library/Management/AppAutoPatch/Installomator/Installomator.sh` unless `organizationInstallomatorFile` is changed.
 - **Jamf Pro Binary** is expected at `/usr/local/bin/jamf` unless `jamfBinary` is changed.
-- **Homebrew** is detected at `/opt/homebrew/bin/brew` or `/usr/local/bin/brew` unless `brewPath` is changed.
+- **Homebrew** is detected at `/opt/homebrew/bin/brew` or `/usr/local/bin/brew` unless `brewPath` is changed. Examples and default Homebrew validation paths in this repo assume Apple silicon with Homebrew installed in `/opt/homebrew`.
 - **Network access** may be required for:
   - swiftDialog bootstrap via GitHub API and GitHub release download
   - remote icon assets used in dialogs
