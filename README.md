@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite)
 
-# SYM-Lite (1.0.0b3)
+# SYM-Lite (1.0.0b4)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) — and / or Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies) — all through a unified [swiftDialog](https://swiftdialog.app) selection interface
 
@@ -37,7 +37,7 @@
 ## Key Features
 
 ✓ **Dual execution support** — Installomator labels AND Jamf Pro policies in single session  
-✓ **Interactive selection UI** — User-friendly checkbox dialog with per-item icons  
+✓ **Interactive selection UI** — User-friendly checkbox dialog with per-item icons; optional install-state labels disable already-installed items and exit cleanly when nothing remains selectable  
 ✓ **Alphabetical sorting** — All items sorted together by display name in selection dialog  
 ✓ **Silent mode** — CSV-based automation support  
 ✓ **Inspect Mode monitoring** — Real-time progress with rich status updates for Installomator labels  
@@ -121,6 +121,8 @@ sudo ~/Downloads/SYM-Lite.zsh
 3. Inspect Mode dialog launches showing real-time progress
 4. Completion report shows one row per selected item
 5. Optional restart prompt
+
+If `selectionDialogStatusSublabelsEnabled="true"` and every configured item is already installed, interactive mode shows an informational dialog and exits without launching Inspect Mode.
 
 **Interactive mode requirements:**
 - Requires an active logged-in GUI user
@@ -332,6 +334,7 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 | `organizationOverlayiconURL` | swiftDialog logo | Overlay icon URL |
 | `mainDialogIcon` | GitHub raw `SYM_icon.png` URL | Main dialog icon |
 | `fontSize` | `"14"` | Dialog message font size |
+| `selectionDialogStatusSublabelsEnabled` | `"true"` | Show install-state sublabels, disable already-installed items in the interactive picker, and exit cleanly if no selectable items remain |
 | `restartPromptEnabled` | `"true"` | Show restart prompt after completion |
 | `scriptLog` | `/var/log/...log` | Client-side log path |
 
@@ -465,6 +468,6 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 
 ---
 
-**Version:** 1.0.0b3  
-**Date:** 02-Apr-2026  
+**Version:** 1.0.0b4  
+**Date:** 08-Apr-2026  
 **Author:** Dan K. Snelson (@dan-snelson)

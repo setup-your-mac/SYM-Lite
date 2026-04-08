@@ -16,10 +16,12 @@
 #
 # HISTORY
 #
-# Version 1.0.0b3, 02-Apr-2026, Dan K. Snelson (@dan-snelson)
-#   - Added an organization-level switch to hide Jamf policy items and skip Jamf execution
-#   - Updated silent CSV parsing to warn and skip Jamf item IDs when Jamf policy items are disabled
-#   - Refined Inspect Mode messaging to reflect the selected item types
+# Version 1.0.0b4, 08-Apr-2026, Dan K. Snelson (@dan-snelson)
+# - Added validation-path status text to each interactive selection dialog row.
+# - Added an organization-level toggle to hide selection dialog status sublabels (i.e., `selectionDialogStatusSublabelsEnabled="false"`)
+# - Disabled already-installed items while preserving unified sorting, icons, and switch styling in the picker.
+# - Fixed interactive picker parsing by using stable checkbox names and exiting cleanly when no selectable items remain.
+# - Updated release documentation for the new selection dialog feedback.
 #
 ####################################################################################################
 
@@ -36,7 +38,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.0.0b3"
+scriptVersion="1.0.0b4"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -95,6 +97,7 @@ mainDialogIcon="https://raw.githubusercontent.com/setup-your-mac/Setup-Your-Mac/
 
 # Dialog presentation defaults
 fontSize="14"
+selectionDialogStatusSublabelsEnabled="true"
 
 # Restart prompt behavior
 restartPromptEnabled="true"
@@ -156,6 +159,8 @@ completionReportRecords=()
 completionDialogJSONFile=""
 dialogPID=""
 dialogTemporaryDirectory=""
+selectionDialogOptionRecords=()
+selectionDialogTotalItemCount=0
 
 
 
@@ -300,6 +305,108 @@ function parseJamfPolicyItem() {
     itemDisplayName="${parts[2]}"
     itemValidationPath="${parts[3]}"
     itemIconURL="${parts[4]}"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Get Selection Dialog Status Text
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function getSelectionDialogStatusText() {
+    local validationPath="$1"
+
+    if isValidationPathPresent "${validationPath}"; then
+        print -r -- "Already installed"
+    else
+        print -r -- "New installation"
+    fi
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Get Selection Dialog Label
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function getSelectionDialogLabel() {
+    local displayName="$1"
+    local validationPath="$2"
+    local itemStatusText=""
+
+    if [[ "${selectionDialogStatusSublabelsEnabled:l}" == "true" ]]; then
+        itemStatusText=$(getSelectionDialogStatusText "${validationPath}")
+        print -r -- "${displayName}"$'\n'"${itemStatusText}"
+    else
+        print -r -- "${displayName}"
+    fi
+}
+
+function getSelectionDialogCheckboxesJSON() {
+    local -a allSortKeys=()
+    local -a usedCheckboxLabels=()
+    local item=""
+    local entry=""
+    local checkboxItemsJSON=""
+    local separator=""
+    local checkboxLabel=""
+    local escapedCheckboxLabel=""
+    local escapedIconURL=""
+    local checkboxDisabled="false"
+    local itemID=""
+    local existingLabel=""
+    local escapedItemID=""
+
+    selectionDialogOptionRecords=()
+    selectionDialogTotalItemCount=0
+
+    for item in "${installomatorLabels[@]}"; do
+        local parts=("${(@s: | :)item}")
+        allSortKeys+=("${parts[2]} | installomator | ${item}")
+    done
+    for item in "${jamfPolicyItems[@]}"; do
+        local parts=("${(@s: | :)item}")
+        allSortKeys+=("${parts[2]} | jamf | ${item}")
+    done
+
+    for entry in "${(oi)allSortKeys[@]}"; do
+        ((selectionDialogTotalItemCount++))
+        local entryParts=("${(@s: | :)entry}")
+        local itemType="${entryParts[2]}"
+        local itemConfig="${(j: | :)entryParts[3,-1]}"
+
+        if [[ "${itemType}" == "installomator" ]]; then
+            parseInstallomatorItem "${itemConfig}"
+            itemID="${itemLabel}"
+        else
+            parseJamfPolicyItem "${itemConfig}"
+            itemID="${itemTrigger}"
+        fi
+
+        checkboxLabel=$(getSelectionDialogLabel "${itemDisplayName}" "${itemValidationPath}")
+        for existingLabel in "${usedCheckboxLabels[@]}"; do
+            if [[ "${existingLabel}" == "${checkboxLabel}" ]]; then
+                checkboxLabel="${checkboxLabel} (${itemID})"
+                break
+            fi
+        done
+        usedCheckboxLabels+=("${checkboxLabel}")
+
+        if [[ "${selectionDialogStatusSublabelsEnabled:l}" == "true" ]] && isValidationPathPresent "${itemValidationPath}"; then
+            checkboxDisabled="true"
+        else
+            checkboxDisabled="false"
+            selectionDialogOptionRecords+=("${itemID}")
+        fi
+
+        escapedCheckboxLabel=$(escapeJSONString "${checkboxLabel}")
+        escapedItemID=$(escapeJSONString "${itemID}")
+        escapedIconURL=$(escapeJSONString "${itemIconURL}")
+        checkboxItemsJSON="${checkboxItemsJSON}${separator}{\"label\":\"${escapedCheckboxLabel}\",\"name\":\"${escapedItemID}\",\"checked\":false,\"disabled\":${checkboxDisabled},\"icon\":\"${escapedIconURL}\"}"
+        separator=","
+    done
+
+    print -r -- "[${checkboxItemsJSON}]"
 }
 
 
@@ -453,6 +560,12 @@ function escapeJSONString() {
     value="${value//$'\t'/\\t}"
 
     print -r -- "${value}"
+}
+
+function isValidationPathPresent() {
+    local validationPath="$1"
+
+    [[ -n "${validationPath}" && -e "${validationPath}" ]]
 }
 
 function addCompletionReportRecord() {
@@ -1068,6 +1181,26 @@ function parseDialogSelections() {
     local output="$1"
     selectedItems=()
 
+    if [[ ${#selectionDialogOptionRecords[@]} -gt 0 ]]; then
+        local itemID=""
+
+        for itemID in "${selectionDialogOptionRecords[@]}"; do
+            if command -v jq >/dev/null 2>&1; then
+                if echo "${output}" | jq -e --arg key "${itemID}" '.[$key] == true' >/dev/null 2>&1; then
+                    selectedItems+=("${itemID}")
+                fi
+                continue
+            fi
+
+            if echo "${output}" | grep -Fq "\"${itemID}\":true" || echo "${output}" | grep -Fq "\"${itemID}\": true"; then
+                selectedItems+=("${itemID}")
+            fi
+        done
+
+        info "Parsed dialog selections: ${#selectedItems[@]} items selected"
+        return 0
+    fi
+
     # Get all possible item IDs
     local allIDs
     allIDs=($(getAllItemIDs))
@@ -1095,6 +1228,34 @@ function parseDialogSelections() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Show No Selectable Items Dialog
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function showNoSelectableItemsDialog() {
+    requireLoggedInUser "display no selectable items dialog"
+
+    local messageText="There are no selectable items available right now."
+
+    if [[ ${selectionDialogTotalItemCount} -gt 0 ]] && [[ "${selectionDialogStatusSublabelsEnabled:l}" == "true" ]]; then
+        messageText="All configured items are already installed, so there is nothing new to install right now."
+    fi
+
+    runAsUser "${loggedInUser}" "${dialogBinary}" \
+        --title "${humanReadableScriptName}" \
+        --infotext "${scriptVersion}" \
+        --messagefont "size=${fontSize}" \
+        --message "${messageText}" \
+        --icon "${mainDialogIcon}" \
+        --button1text "Close" \
+        --height 325 \
+        --width 500 2>/dev/null
+
+    notice "No selectable items were available in the interactive picker"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Show Selection Dialog
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -1110,38 +1271,28 @@ function showSelectionDialog() {
 
     requireLoggedInUser "display selection dialog"
 
-    local checkboxArgs=()
     local baseMessage
     local warningMessage=""
     local messageText
     local dialogOutput
+    local checkboxesJSON=""
     local rc
 
     # Build message
     baseMessage="**$(date +'Happy %A,') ${loggedInUserFirstname}!**\n\nSelect one or more applications to install."
 
     # Build unified checkbox list (Installomator + Jamf, sorted together by display name)
-    local -a allSortKeys=()
-    for item in "${installomatorLabels[@]}"; do
-        local parts=("${(@s: | :)item}")
-        allSortKeys+=("${parts[2]} | installomator | ${item}")
-    done
-    for item in "${jamfPolicyItems[@]}"; do
-        local parts=("${(@s: | :)item}")
-        allSortKeys+=("${parts[2]} | jamf | ${item}")
-    done
-    for entry in "${(oi)allSortKeys[@]}"; do
-        local entryParts=("${(@s: | :)entry}")
-        local itemType="${entryParts[2]}"
-        local itemConfig="${(j: | :)entryParts[3,-1]}"
-        if [[ "${itemType}" == "installomator" ]]; then
-            parseInstallomatorItem "${itemConfig}"
-            checkboxArgs+=(--checkbox "${itemDisplayName},name=${itemLabel},icon=${itemIconURL}")
-        elif [[ "${itemType}" == "jamf" ]]; then
-            parseJamfPolicyItem "${itemConfig}"
-            checkboxArgs+=(--checkbox "${itemDisplayName},name=${itemTrigger},icon=${itemIconURL}")
-        fi
-    done
+    checkboxesJSON=$(getSelectionDialogCheckboxesJSON)
+
+    if [[ ${selectionDialogTotalItemCount} -eq 0 ]]; then
+        errorOut "Interactive mode: no items are configured for selection"
+        return 1
+    fi
+
+    if [[ ${#selectionDialogOptionRecords[@]} -eq 0 ]]; then
+        showNoSelectableItemsDialog
+        quitScript 0
+    fi
 
     # Loop until at least one item is selected
     while true; do
@@ -1156,13 +1307,13 @@ function showSelectionDialog() {
             --messagefont "size=${fontSize}" \
             --message "${messageText}" \
             --icon "${mainDialogIcon}" \
+            --jsonstring "{\"checkbox\":${checkboxesJSON}}" \
             --checkboxstyle "switch,large" \
             --json \
             --button1text "Install" \
             --button2text "Cancel" \
             --height 675 \
-            --width 900 \
-            "${checkboxArgs[@]}" 2>/dev/null)"
+            --width 900 2>/dev/null)"
 
         rc=$?
         if [[ ${rc} -ne 0 ]]; then

@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.0.0b4 - 08-Apr-2026
+- Added validation-path status text to each interactive selection dialog row.
+- Added an organization-level toggle to hide selection dialog status sublabels (i.e., `selectionDialogStatusSublabelsEnabled="false"`)
+- Disabled already-installed items while preserving unified sorting, icons, and switch styling in the picker.
+- Fixed interactive picker selection parsing by using stable checkbox names and exiting cleanly when all items are already installed.
+- Updated release documentation for the new selection dialog feedback.
+
 ## 1.0.0b3 - 02-Apr-2026
 - Added an organization-level switch to hide Jamf policy items from the UI and skip Jamf execution.
 - Updated silent mode CSV parsing to warn and skip Jamf item IDs when Jamf policy items are disabled.
