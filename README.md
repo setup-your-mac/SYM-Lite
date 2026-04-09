@@ -498,7 +498,7 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 
 ### Script hangs after clicking Close
 - Script implements 30-second timeout for dialog close
-- After timeout, dialog is force-terminated and script continues
+- After timeout, SYM-Lite sends a quit command to Inspect Mode and falls back to wrapper-process termination if needed
 - Check for debug output in terminal (may indicate dialog issue)
 - Verify `dialogPID` was captured correctly in logs
 - If consistently hanging, check for swiftDialog version issues

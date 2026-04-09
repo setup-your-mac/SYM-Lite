@@ -19,6 +19,8 @@
 # Version 1.0.0b7, 09-Apr-2026, Dan K. Snelson (@dan-snelson)
 # - Changed interactive selection-dialog cancel handling to exit cleanly so intentional user cancellations do not fail Jamf policies.
 # - Preserved non-zero exits for unexpected swiftDialog return codes during picker display.
+# - Added command-file-driven Inspect Mode shutdown so timeout cleanup dismisses the visible swiftDialog window.
+# - Launched Inspect Mode through a single-pass background helper to avoid fallback-driven dialog relaunches.
 #
 ####################################################################################################
 
@@ -163,6 +165,9 @@ dialogAppBundle="/Library/Application Support/Dialog/Dialog.app"
 # swiftDialog Inspect Mode JSON File
 dialogInspectModeJSONFile=""
 
+# swiftDialog Command File
+dialogCommandFile=""
+
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -215,6 +220,8 @@ function cleanup() {
         rm -f -- "${dialogInspectModeJSONFile}" 2>/dev/null
         dialogInspectModeJSONFile=""
     fi
+
+    removeDialogCommandFile
 
     if [[ -n "${completionDialogJSONFile}" && -e "${completionDialogJSONFile}" ]]; then
         rm -f -- "${completionDialogJSONFile}" 2>/dev/null
@@ -295,6 +302,27 @@ function runAsUser() {
     fi
 
     /usr/bin/sudo -u "${user}" "$@"
+}
+
+function launchAsUserInBackground() {
+    local user="$1"
+    shift
+    local userID=""
+
+    if [[ -z "${user}" ]]; then
+        "$@" &
+        dialogPID=$!
+        return 0
+    fi
+
+    userID="$(id -u "${user}" 2>/dev/null)"
+    if [[ ! "${userID}" =~ ^[0-9]+$ ]]; then
+        errorOut "Unable to resolve user ID for '${user}' while launching background process"
+        return 1
+    fi
+
+    /bin/launchctl asuser "${userID}" /usr/bin/sudo -u "${user}" "$@" &
+    dialogPID=$!
 }
 
 
@@ -1153,6 +1181,60 @@ function formattedElapsedTime() {
     /usr/bin/printf '%dh:%dm:%ds\n' $((SECONDS/3600)) $((SECONDS%3600/60)) $((SECONDS%60))
 }
 
+function createDialogCommandFile() {
+    dialogCommandFile=$( /usr/bin/mktemp "/var/tmp/dialogCommandFile_${organizationScriptName}.XXXXXX" )
+    if [[ -z "${dialogCommandFile}" || ! -e "${dialogCommandFile}" ]]; then
+        fatal "Failed to create Dialog command file"
+    fi
+
+    if [[ -n "${loggedInUser}" ]]; then
+        if ! /usr/sbin/chown "${loggedInUser}" "${dialogCommandFile}" 2>/dev/null; then
+            fatal "Failed to set ownership on Dialog command file for ${loggedInUser}."
+        fi
+
+        if ! /bin/chmod 600 "${dialogCommandFile}" 2>/dev/null; then
+            fatal "Failed to set permissions on Dialog command file for ${loggedInUser}."
+        fi
+    fi
+
+    info "Dialog command file created at ${dialogCommandFile}"
+}
+
+function removeDialogCommandFile() {
+    if [[ -n "${dialogCommandFile}" && -e "${dialogCommandFile}" ]]; then
+        rm -f -- "${dialogCommandFile}" 2>/dev/null
+    fi
+
+    dialogCommandFile=""
+}
+
+function closeInspectMode() {
+    local reason="${1:-cleanup}"
+    local gracefulWait="${2:-5}"
+    local waitCount=0
+
+    if [[ -n "${dialogCommandFile}" && -e "${dialogCommandFile}" ]]; then
+        info "Requesting Inspect Mode to quit via command file (${reason})"
+        /bin/echo "quit:" >> "${dialogCommandFile}" 2>/dev/null || warning "Failed to write quit command to Dialog command file"
+    fi
+
+    if [[ -n "${dialogPID}" ]]; then
+        while kill -0 "${dialogPID}" 2>/dev/null && (( waitCount < gracefulWait )); do
+            /bin/sleep 1
+            ((waitCount++))
+        done
+
+        if kill -0 "${dialogPID}" 2>/dev/null; then
+            warning "Inspect Mode wrapper PID ${dialogPID} did not exit after ${gracefulWait} seconds; terminating"
+            kill "${dialogPID}" 2>/dev/null || true
+            /bin/sleep 1
+        fi
+    fi
+
+    dialogPID=""
+    removeDialogCommandFile
+}
+
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -1164,13 +1246,8 @@ function quitScript() {
     
     notice "Exiting …"
     
-    # Kill dialog process if still running
-    if [[ -n "${dialogPID}" ]]; then
-        if kill -0 "${dialogPID}" 2>/dev/null; then
-            info "Terminating Inspect Mode (PID: ${dialogPID})"
-            kill "${dialogPID}" 2>/dev/null || true
-            /bin/sleep 1
-        fi
+    if [[ -n "${dialogPID}" || ( -n "${dialogCommandFile}" && -e "${dialogCommandFile}" ) ]]; then
+        closeInspectMode "script exit"
     fi
     
     cleanup
@@ -2096,8 +2173,10 @@ function executeSYMLiteItems() {
 
         # Launch Dialog in background for real-time progress
         notice "Launching Inspect Mode dialog …"
-        runAsUser "${loggedInUser}" /usr/bin/env DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --inspect-mode &
-        dialogPID=$!
+        createDialogCommandFile
+        if ! launchAsUserInBackground "${loggedInUser}" /usr/bin/env DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --commandfile "${dialogCommandFile}" --inspect-mode; then
+            fatal "Failed to launch Inspect Mode dialog"
+        fi
         info "Inspect Mode PID: ${dialogPID}"
 
         # Give dialog a moment to launch
@@ -2139,11 +2218,12 @@ function executeSYMLiteItems() {
         done
 
         if kill -0 "${dialogPID}" 2>/dev/null; then
-            warning "Dialog did not close after ${maxWait} seconds; terminating"
-            kill "${dialogPID}" 2>/dev/null || true
-            sleep 1
+            warning "Dialog did not close after ${maxWait} seconds; requesting quit"
+            closeInspectMode "timeout waiting for Review Results"
         fi
 
+        dialogPID=""
+        removeDialogCommandFile
         info "Inspect Mode closed."
     fi
     
@@ -2159,12 +2239,8 @@ function executeSYMLiteItems() {
 function handleInterruption() {
     warning "Script interrupted by user"
     
-    # Kill dialog if still running
-    if [[ -n "${dialogPID}" ]]; then
-        if kill -0 "${dialogPID}" 2>/dev/null; then
-            info "Terminating Inspect Mode (PID: ${dialogPID})"
-            kill "${dialogPID}" 2>/dev/null || true
-        fi
+    if [[ -n "${dialogPID}" || ( -n "${dialogCommandFile}" && -e "${dialogCommandFile}" ) ]]; then
+        closeInspectMode "interrupt"
     fi
     
     cleanup
