@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.0.0b7 - 09-Apr-2026
+- Changed interactive selection-dialog cancellation to exit cleanly so Jamf Pro policy logs do not report a failure when the user clicks `Cancel`.
+- Preserved non-zero exits for unexpected swiftDialog return codes during selection dialog display.
+
 ## 1.0.0b6 - 08-Apr-2026
 - Added approved Homebrew cask/formula items as a third item type in the unified picker and silent-mode CSV flow.
 - Added Homebrew binary detection, configuration toggles, and invalid-item filtering during pre-flight.

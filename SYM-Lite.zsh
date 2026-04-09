@@ -16,12 +16,9 @@
 #
 # HISTORY
 #
-# Version 1.0.0b6, 08-Apr-2026, Dan K. Snelson (@dan-snelson)
-# - Added approved Homebrew cask/formula items as a third item type in the unified picker and silent-mode CSV flow.
-# - Added Homebrew binary detection, configuration toggles, and invalid-item filtering during pre-flight.
-# - Executed Homebrew package installs in the logged-in user context while preserving root-run script behavior.
-# - Expanded Inspect Mode, completion reporting, and user-facing copy to support software items beyond Installomator labels.
-# - Updated release documentation for Homebrew item support.
+# Version 1.0.0b7, 09-Apr-2026, Dan K. Snelson (@dan-snelson)
+# - Changed interactive selection-dialog cancel handling to exit cleanly so intentional user cancellations do not fail Jamf policies.
+# - Preserved non-zero exits for unexpected swiftDialog return codes during picker display.
 #
 ####################################################################################################
 
@@ -38,7 +35,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.0.0b6"
+scriptVersion="1.0.0b7"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -1764,9 +1761,12 @@ function showSelectionDialog() {
             --width 900 2>/dev/null)"
 
         rc=$?
-        if [[ ${rc} -ne 0 ]]; then
+        if [[ ${rc} -eq 2 ]]; then
             info "User cancelled selection dialog"
-            quitScript 2
+            quitScript 0
+        elif [[ ${rc} -ne 0 ]]; then
+            errorOut "Selection dialog exited unexpectedly (return code: ${rc})"
+            quitScript "${rc}"
         fi
 
         parseDialogSelections "${dialogOutput}"
