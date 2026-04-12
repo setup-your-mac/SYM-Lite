@@ -5,7 +5,7 @@
 #
 # SYM-Lite
 #
-# - Lean, purpose-built script for executing Jamf Pro Policy Custom Triggers and Installomator labels
+# - Lean, purpose-built script for executing approved software and management actions
 # - User selects which items to install/execute via swiftDialog selection UI
 # - Monitors execution progress via swiftDialog Inspect Mode
 # - No user input prompts beyond selection (no asset tag, computer name, etc.)
@@ -16,10 +16,8 @@
 #
 # HISTORY
 #
-# Version 1.0.0b3, 02-Apr-2026, Dan K. Snelson (@dan-snelson)
-#   - Added an organization-level switch to hide Jamf policy items and skip Jamf execution
-#   - Updated silent CSV parsing to warn and skip Jamf item IDs when Jamf policy items are disabled
-#   - Refined Inspect Mode messaging to reflect the selected item types
+# Version 1.0.0, 12-Apr-2026, Dan K. Snelson (@dan-snelson)
+# - Official 1.0.0 release
 #
 ####################################################################################################
 
@@ -36,7 +34,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.0.0b3"
+scriptVersion="1.0.0"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -84,8 +82,17 @@ organizationInstallomatorFile="/Library/Management/AppAutoPatch/Installomator/In
 # Organization's Jamf Binary Path
 jamfBinary="/usr/local/bin/jamf"
 
+# Optional Homebrew binary override (otherwise /opt/homebrew/bin/brew, then /usr/local/bin/brew)
+brewPath=""
+
 # Enable or disable Jamf policy items
 enableJamfPolicyItems="true"
+
+# Enable or disable Homebrew package items
+enableHomebrewItems="true"
+
+# Update Homebrew metadata once before the first Homebrew package install
+homebrewUpdateBeforeInstall="false"
 
 # Organization's Overlayicon URL
 organizationOverlayiconURL="https://swiftdialog.app/_astro/dialog_logo.CZF0LABZ_ZjWz8w.webp"
@@ -95,6 +102,7 @@ mainDialogIcon="https://raw.githubusercontent.com/setup-your-mac/Setup-Your-Mac/
 
 # Dialog presentation defaults
 fontSize="14"
+selectionDialogStatusSublabelsEnabled="true"
 
 # Restart prompt behavior
 restartPromptEnabled="true"
@@ -112,10 +120,14 @@ installomatorLabels=(
     "awsvpnclient | AWS VPN Client | /Applications/AWS VPN Client/AWS VPN Client.app | https://usw2.ics.services.jamfcloud.com/icon/hash_1d1bef5523d9f7eca5a45f2db9a63732e85edb5f914220807ca740ba7c4881b9"
     "bruno | Bruno | /Applications/Bruno.app | https://usw2.ics.services.jamfcloud.com/icon/hash_48501630ad2f5dd5de3e055d6acdda07682895440cad366ee7befac71cab1399"
     "charles | Charles Proxy | /Applications/Charles.app | https://use2.ics.services.jamfcloud.com/icon/hash_59b395ca81889a6d83deda8e6babc5ae4bc5931d36a72b738fe30b84d027593d"
+    "codex | Codex | /Applications/Codex.app | https://usw2.ics.services.jamfcloud.com/icon/hash_9d2a1b6f204d2a0d6e99dfc7a411edc0d269c1ab748514dcdde46ea7b4277e51"
     "docker | Docker | /Applications/Docker.app | https://usw2.ics.services.jamfcloud.com/icon/hash_a344dca5fdc0e86822e8f21ec91088e6591b1e292bdcebdee1281fbd794c2724"
     "jetbrainsintellijidea | IntelliJ IDEA | /Applications/IntelliJ IDEA.app | https://usw2.ics.services.jamfcloud.com/icon/hash_f669d73acc06297e1fc2f65245cfbdace03263f81aebf95444a8360a101b239d"
+    "pique | Pique | /Applications/Pique.app | https://usw2.ics.services.jamfcloud.com/icon/hash_7d2539860cca6ec5ea5a71cba2aee7d93b9534e4267c16f73c7035f3dc025b9c"
     "visualstudiocode | Visual Studio Code | /Applications/Visual Studio Code.app | https://use2.ics.services.jamfcloud.com/icon/hash_532094f99f6130f325a97ed6421d09d2a416e269f284304d39c21020565056ed"
 )
+
+configuredInstallomatorLabels=("${installomatorLabels[@]}")
 
 # Jamf Pro Policies
 # Format: "trigger | Display Name | Validation Path | Icon URL"
@@ -125,6 +137,16 @@ jamfPolicyItems=(
 )
 
 configuredJamfPolicyItems=("${jamfPolicyItems[@]}")
+
+# Homebrew Items
+# Format: "cask:token | Display Name | Validation Path | Icon URL"
+homebrewItems=(
+    "cask:1password-cli | 1Password CLI | /opt/homebrew/bin/op | https://usw2.ics.services.jamfcloud.com/icon/hash_9456dcae0b68fa522a7b411e7ebd2f9062a1a60cb0681ab3cbad3dda64a410c6"
+    "cask:codex | codex-cli | /opt/homebrew/bin/codex | https://usw2.ics.services.jamfcloud.com/icon/hash_9d2a1b6f204d2a0d6e99dfc7a411edc0d269c1ab748514dcdde46ea7b4277e51"
+    "formula:direnv | direnv | /opt/homebrew/bin/direnv | https://usw2.ics.services.jamfcloud.com/icon/hash_a9a7557b3142dd165372a1e66bca2533c783723956f1415861eac6fd5058b588"
+)
+
+configuredHomebrewItems=("${homebrewItems[@]}")
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -140,6 +162,9 @@ dialogAppBundle="/Library/Application Support/Dialog/Dialog.app"
 # swiftDialog Inspect Mode JSON File
 dialogInspectModeJSONFile=""
 
+# swiftDialog Command File
+dialogCommandFile=""
+
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -149,6 +174,7 @@ dialogInspectModeJSONFile=""
 selectedItems=()
 selectedInstallomatorLabels=()
 selectedJamfPolicies=()
+selectedHomebrewItems=()
 failedItems=()
 completedItems=()
 skippedItems=()
@@ -156,6 +182,13 @@ completionReportRecords=()
 completionDialogJSONFile=""
 dialogPID=""
 dialogTemporaryDirectory=""
+selectionDialogOptionRecords=()
+selectionDialogTotalItemCount=0
+selectionDialogDisabledItemCount=0
+selectionDialogCheckboxesJSON=""
+effectiveBrewPath=""
+homebrewUpdateAttempted="false"
+homebrewUpdateSucceeded="false"
 
 
 
@@ -184,6 +217,8 @@ function cleanup() {
         rm -f -- "${dialogInspectModeJSONFile}" 2>/dev/null
         dialogInspectModeJSONFile=""
     fi
+
+    removeDialogCommandFile
 
     if [[ -n "${completionDialogJSONFile}" && -e "${completionDialogJSONFile}" ]]; then
         rm -f -- "${completionDialogJSONFile}" 2>/dev/null
@@ -266,6 +301,27 @@ function runAsUser() {
     /usr/bin/sudo -u "${user}" "$@"
 }
 
+function launchAsUserInBackground() {
+    local user="$1"
+    shift
+    local userID=""
+
+    if [[ -z "${user}" ]]; then
+        "$@" &
+        dialogPID=$!
+        return 0
+    fi
+
+    userID="$(id -u "${user}" 2>/dev/null)"
+    if [[ ! "${userID}" =~ ^[0-9]+$ ]]; then
+        errorOut "Unable to resolve user ID for '${user}' while launching background process"
+        return 1
+    fi
+
+    /bin/launchctl asuser "${userID}" /usr/bin/sudo -u "${user}" "$@" &
+    dialogPID=$!
+}
+
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -305,6 +361,293 @@ function parseJamfPolicyItem() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Parse Homebrew Item Configuration
+# Input: "cask:token | displayName | validationPath | iconURL"
+# Output: Sets global variables itemHomebrewID, itemBrewMode, itemBrewToken, itemDisplayName, itemValidationPath, itemIconURL
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function parseHomebrewItem() {
+    local itemConfig="$1"
+    local parts=("${(@s: | :)itemConfig}")
+
+    itemHomebrewID="${parts[1]}"
+    itemBrewMode="${itemHomebrewID%%:*}"
+    itemBrewToken="${itemHomebrewID#*:}"
+    itemDisplayName="${parts[2]}"
+    itemValidationPath="${parts[3]}"
+    itemIconURL="${parts[4]}"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Get Selection Dialog Status Text
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function getSelectionDialogStatusText() {
+    local validationPath="$1"
+
+    if isValidationPathPresent "${validationPath}"; then
+        print -r -- "Already installed"
+    else
+        print -r -- "New installation"
+    fi
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Get Selection Dialog Label
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function getSelectionDialogLabel() {
+    local displayName="$1"
+    local validationPath="$2"
+    local itemStatusText=""
+
+    if [[ "${selectionDialogStatusSublabelsEnabled:l}" == "true" ]]; then
+        itemStatusText=$(getSelectionDialogStatusText "${validationPath}")
+        print -r -- "${displayName}"$'\n'"${itemStatusText}"
+    else
+        print -r -- "${displayName}"
+    fi
+}
+
+function getSelectionDialogCheckboxesJSON() {
+    local -a allSortKeys=()
+    local -a usedCheckboxLabels=()
+    local item=""
+    local entry=""
+    local checkboxItemsJSON=""
+    local separator=""
+    local checkboxLabel=""
+    local escapedCheckboxLabel=""
+    local escapedIconURL=""
+    local checkboxDisabled="false"
+    local itemID=""
+    local existingLabel=""
+    local escapedItemID=""
+
+    selectionDialogOptionRecords=()
+    selectionDialogTotalItemCount=0
+    selectionDialogDisabledItemCount=0
+
+    for item in "${installomatorLabels[@]}"; do
+        local parts=("${(@s: | :)item}")
+        allSortKeys+=("${parts[2]} | installomator | ${item}")
+    done
+    for item in "${jamfPolicyItems[@]}"; do
+        local parts=("${(@s: | :)item}")
+        allSortKeys+=("${parts[2]} | jamf | ${item}")
+    done
+    for item in "${homebrewItems[@]}"; do
+        local parts=("${(@s: | :)item}")
+        allSortKeys+=("${parts[2]} | homebrew | ${item}")
+    done
+
+    for entry in "${(oi)allSortKeys[@]}"; do
+        ((selectionDialogTotalItemCount++))
+        local entryParts=("${(@s: | :)entry}")
+        local itemType="${entryParts[2]}"
+        local itemConfig="${(j: | :)entryParts[3,-1]}"
+
+        if [[ "${itemType}" == "installomator" ]]; then
+            parseInstallomatorItem "${itemConfig}"
+            itemID="${itemLabel}"
+        elif [[ "${itemType}" == "jamf" ]]; then
+            parseJamfPolicyItem "${itemConfig}"
+            itemID="${itemTrigger}"
+        else
+            parseHomebrewItem "${itemConfig}"
+            itemID="${itemHomebrewID}"
+        fi
+
+        checkboxLabel=$(getSelectionDialogLabel "${itemDisplayName}" "${itemValidationPath}")
+        for existingLabel in "${usedCheckboxLabels[@]}"; do
+            if [[ "${existingLabel}" == "${checkboxLabel}" ]]; then
+                checkboxLabel="${checkboxLabel} (${itemID})"
+                break
+            fi
+        done
+        usedCheckboxLabels+=("${checkboxLabel}")
+
+        if [[ "${selectionDialogStatusSublabelsEnabled:l}" == "true" ]] && isValidationPathPresent "${itemValidationPath}"; then
+            checkboxDisabled="true"
+            ((selectionDialogDisabledItemCount++))
+        else
+            checkboxDisabled="false"
+            selectionDialogOptionRecords+=("${itemID}")
+        fi
+
+        escapedCheckboxLabel=$(escapeJSONString "${checkboxLabel}")
+        escapedItemID=$(escapeJSONString "${itemID}")
+        escapedIconURL=$(escapeJSONString "${itemIconURL}")
+        checkboxItemsJSON="${checkboxItemsJSON}${separator}{\"label\":\"${escapedCheckboxLabel}\",\"name\":\"${escapedItemID}\",\"checked\":false,\"disabled\":${checkboxDisabled},\"icon\":\"${escapedIconURL}\"}"
+        separator=","
+    done
+
+    selectionDialogCheckboxesJSON="[${checkboxItemsJSON}]"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Get Available Installomator Labels
+# Parses the active Installomator file for top-level case arms under `case $label in`
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function getAvailableInstallomatorLabels() {
+    local -a availableLabels=()
+    local -A availableLabelMap=()
+    local labelArmsOutput=""
+    local labelArm=""
+    local labelAlias=""
+
+    if ! labelArmsOutput=$(/usr/bin/awk '
+        BEGIN {
+            inLabelCase = 0
+            caseDepth = 0
+        }
+
+        /^[[:space:]]*case[[:space:]]+\$label[[:space:]]+in[[:space:]]*$/ {
+            inLabelCase = 1
+            caseDepth = 1
+            next
+        }
+
+        inLabelCase {
+            if ($0 ~ /^[[:space:]]*case[[:space:]].*[[:space:]]+in[[:space:]]*$/) {
+                caseDepth++
+                next
+            }
+
+            if ($0 ~ /^[[:space:]]*esac([[:space:]]*;.*)?[[:space:]]*$/) {
+                caseDepth--
+                if (caseDepth == 0) {
+                    exit
+                }
+                next
+            }
+
+            if (caseDepth == 1 && $0 ~ /^[[:space:]]*[A-Za-z0-9_*][A-Za-z0-9_|-]*\)[[:space:]]*$/) {
+                labelArm = $0
+                sub(/^[[:space:]]*/, "", labelArm)
+                sub(/\)[[:space:]]*$/, "", labelArm)
+                print labelArm
+            }
+        }
+    ' "${organizationInstallomatorFile}"); then
+        return 1
+    fi
+
+    while IFS= read -r labelArm; do
+        [[ -z "${labelArm}" ]] && continue
+
+        for labelAlias in "${(@s:|:)labelArm}"; do
+            labelAlias="${labelAlias// /}"
+
+            case "${labelAlias}" in
+                longversion|valuesfromarguments|'*')
+                    continue
+                    ;;
+            esac
+
+            if (( ! ${+availableLabelMap[$labelAlias]} )); then
+                availableLabelMap[$labelAlias]=1
+                availableLabels+=("${labelAlias}")
+            fi
+        done
+    done <<< "${labelArmsOutput}"
+
+    print -l -- "${availableLabels[@]}"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Normalize Installomator Label Availability
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function normalizeInstallomatorLabels() {
+    local configuredLabelCount="${#configuredInstallomatorLabels[@]}"
+    local -a normalizedInstallomatorLabels=()
+    local -a availableInstallomatorLabels=()
+    local -A availableInstallomatorLabelMap=()
+    local availableLabelsOutput=""
+    local item=""
+    local label=""
+    local displayName=""
+    local filteredLabelCount=0
+    local availableLabel=""
+
+    if [[ ${configuredLabelCount} -eq 0 ]]; then
+        installomatorLabels=()
+        preFlight "No Installomator labels configured"
+        return 0
+    fi
+
+    if [[ ! -e "${organizationInstallomatorFile}" ]]; then
+        installomatorLabels=()
+        warning "Installomator not found at ${organizationInstallomatorFile}; hiding Installomator labels for this run"
+        return 0
+    elif [[ ! -f "${organizationInstallomatorFile}" ]]; then
+        installomatorLabels=()
+        warning "Installomator is not a regular file at ${organizationInstallomatorFile}; hiding Installomator labels for this run"
+        return 0
+    elif [[ ! -r "${organizationInstallomatorFile}" ]]; then
+        installomatorLabels=()
+        warning "Installomator is not readable at ${organizationInstallomatorFile}; hiding Installomator labels for this run"
+        return 0
+    elif [[ ! -x "${organizationInstallomatorFile}" ]]; then
+        installomatorLabels=()
+        warning "Installomator is not executable at ${organizationInstallomatorFile}; hiding Installomator labels for this run"
+        return 0
+    elif [[ ! -s "${organizationInstallomatorFile}" ]]; then
+        installomatorLabels=()
+        warning "Installomator at ${organizationInstallomatorFile} is zero bytes; hiding Installomator labels for this run"
+        return 0
+    fi
+
+    preFlight "Installomator found at ${organizationInstallomatorFile}; validating configured labels"
+
+    if ! availableLabelsOutput="$(getAvailableInstallomatorLabels)"; then
+        installomatorLabels=()
+        warning "Failed to parse Installomator labels from ${organizationInstallomatorFile}; hiding Installomator labels for this run"
+        return 0
+    fi
+
+    availableInstallomatorLabels=("${(@f)availableLabelsOutput}")
+
+    if [[ ${#availableInstallomatorLabels[@]} -eq 0 ]]; then
+        installomatorLabels=()
+        warning "No Installomator labels were parsed from ${organizationInstallomatorFile}; hiding Installomator labels for this run"
+        return 0
+    fi
+
+    for availableLabel in "${availableInstallomatorLabels[@]}"; do
+        availableInstallomatorLabelMap[$availableLabel]=1
+    done
+
+    for item in "${configuredInstallomatorLabels[@]}"; do
+        parseInstallomatorItem "${item}"
+        label="${itemLabel}"
+        displayName="${itemDisplayName}"
+
+        if (( ${+availableInstallomatorLabelMap[$label]} )); then
+            normalizedInstallomatorLabels+=("${item}")
+        else
+            errorOut "Configured Installomator label '${label}' (${displayName}) is not available in ${organizationInstallomatorFile}; hiding it from this run"
+            ((filteredLabelCount++))
+        fi
+    done
+
+    installomatorLabels=("${normalizedInstallomatorLabels[@]}")
+    preFlight "Installomator label validation complete: ${#installomatorLabels[@]} available, ${filteredLabelCount} filtered"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Normalize Jamf Policy Item Availability
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -322,6 +665,158 @@ function normalizeJamfPolicyItems() {
     else
         jamfPolicyItems=()
     fi
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Refresh Homebrew Execution User
+# Returns: 0 if a resolvable logged-in user is available, 1 otherwise
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function refreshHomebrewExecutionUser() {
+    currentLoggedInUser "false"
+
+    if [[ -z "${loggedInUser}" || "${loggedInUser}" == "loginwindow" ]]; then
+        return 1
+    fi
+
+    if ! /usr/bin/id -u "${loggedInUser}" >/dev/null 2>&1; then
+        return 1
+    fi
+
+    updateLoggedInUserDetails
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Detect Effective Homebrew Binary
+# Returns: Path to Homebrew binary on stdout, or empty if unavailable
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function detectHomebrewBinary() {
+    if [[ -n "${brewPath}" ]]; then
+        if [[ -x "${brewPath}" ]]; then
+            print -r -- "${brewPath}"
+        fi
+        return 0
+    fi
+
+    if [[ -x "/opt/homebrew/bin/brew" ]]; then
+        print -r -- "/opt/homebrew/bin/brew"
+        return 0
+    fi
+
+    if [[ -x "/usr/local/bin/brew" ]]; then
+        print -r -- "/usr/local/bin/brew"
+        return 0
+    fi
+
+    print -r -- ""
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Normalize Homebrew Item Availability
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function normalizeHomebrewItems() {
+    local homebrewItemsSetting="${enableHomebrewItems:l}"
+    local detectedBrewPath=""
+    local filteredItemCount=0
+    local item=""
+    local -a normalizedHomebrewItems=()
+
+    if [[ "${homebrewItemsSetting}" != "true" && "${homebrewItemsSetting}" != "false" ]]; then
+        warning "Invalid enableHomebrewItems value '${enableHomebrewItems}'; defaulting to true"
+        enableHomebrewItems="true"
+        homebrewItemsSetting="true"
+    fi
+
+    if [[ "${homebrewItemsSetting}" != "true" ]]; then
+        homebrewItems=()
+        effectiveBrewPath=""
+        return 0
+    fi
+
+    homebrewItems=("${configuredHomebrewItems[@]}")
+
+    if [[ ${#homebrewItems[@]} -eq 0 ]]; then
+        preFlight "No Homebrew items configured"
+        effectiveBrewPath=""
+        return 0
+    fi
+
+    detectedBrewPath="$(detectHomebrewBinary)"
+    if [[ -z "${detectedBrewPath}" ]]; then
+        if [[ -n "${brewPath}" ]]; then
+            warning "Configured Homebrew path is unavailable or not executable: ${brewPath}"
+        else
+            warning "Homebrew binary not found at /opt/homebrew/bin/brew or /usr/local/bin/brew"
+        fi
+        warning "Homebrew items will be hidden from this run until Homebrew is installed"
+        homebrewItems=()
+        effectiveBrewPath=""
+        return 0
+    fi
+
+    effectiveBrewPath="${detectedBrewPath}"
+    preFlight "Homebrew binary found at ${effectiveBrewPath}"
+
+    if ! refreshHomebrewExecutionUser; then
+        warning "No logged-in user is available to run Homebrew; hiding Homebrew items from this run"
+        homebrewItems=()
+        effectiveBrewPath=""
+        return 0
+    fi
+
+    preFlight "Homebrew items will run as ${loggedInUser}"
+
+    for item in "${configuredHomebrewItems[@]}"; do
+        parseHomebrewItem "${item}"
+
+        if [[ "${itemBrewMode}" != "cask" && "${itemBrewMode}" != "formula" ]]; then
+            errorOut "Configured Homebrew item '${itemHomebrewID}' (${itemDisplayName}) has an invalid prefix; use 'cask:' or 'formula:'"
+            ((filteredItemCount++))
+            continue
+        fi
+
+        if [[ -z "${itemBrewToken}" || "${itemBrewToken}" == "${itemHomebrewID}" ]]; then
+            errorOut "Configured Homebrew item '${itemHomebrewID}' (${itemDisplayName}) is missing a package token; hiding it from this run"
+            ((filteredItemCount++))
+            continue
+        fi
+
+        normalizedHomebrewItems+=("${item}")
+    done
+
+    homebrewItems=("${normalizedHomebrewItems[@]}")
+    preFlight "Homebrew item validation complete: ${#homebrewItems[@]} available, ${filteredItemCount} filtered"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Check Configured Homebrew Item
+# Input: Item ID
+# Output: 0 if item exists in configuredHomebrewItems, 1 otherwise
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function isConfiguredHomebrewItem() {
+    local itemID="$1"
+    local item
+
+    for item in "${configuredHomebrewItems[@]}"; do
+        local parts=("${(@s: | :)item}")
+        if [[ "${parts[1]}" == "${itemID}" ]]; then
+            return 0
+        fi
+    done
+
+    return 1
 }
 
 
@@ -349,6 +844,28 @@ function isConfiguredJamfPolicyItem() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Check Configured Installomator Label
+# Input: Item ID
+# Output: 0 if item exists in configuredInstallomatorLabels, 1 otherwise
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function isConfiguredInstallomatorLabel() {
+    local itemID="$1"
+    local item
+
+    for item in "${configuredInstallomatorLabels[@]}"; do
+        local parts=("${(@s: | :)item}")
+        if [[ "${parts[1]}" == "${itemID}" ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Get All Item IDs
 # Returns: Array of all item identifiers (labels + triggers)
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -364,6 +881,12 @@ function getAllItemIDs() {
     
     # Add Jamf policy triggers
     for item in "${jamfPolicyItems[@]}"; do
+        local parts=("${(@s: | :)item}")
+        allIDs+=("${parts[1]}")
+    done
+
+    # Add Homebrew item IDs
+    for item in "${homebrewItems[@]}"; do
         local parts=("${(@s: | :)item}")
         allIDs+=("${parts[1]}")
     done
@@ -396,6 +919,15 @@ function getItemType() {
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
             print -r -- "jamf"
+            return 0
+        fi
+    done
+
+    # Check Homebrew items
+    for item in "${homebrewItems[@]}"; do
+        local parts=("${(@s: | :)item}")
+        if [[ "${parts[1]}" == "${itemID}" ]]; then
+            print -r -- "homebrew"
             return 0
         fi
     done
@@ -432,6 +964,15 @@ function getItemConfig() {
             return 0
         fi
     done
+
+    # Check Homebrew items
+    for item in "${homebrewItems[@]}"; do
+        local parts=("${(@s: | :)item}")
+        if [[ "${parts[1]}" == "${itemID}" ]]; then
+            print -r -- "${item}"
+            return 0
+        fi
+    done
     
     print -r -- ""
     return 1
@@ -453,6 +994,34 @@ function escapeJSONString() {
     value="${value//$'\t'/\\t}"
 
     print -r -- "${value}"
+}
+
+function buildJSONStringArray() {
+    local value=""
+    local jsonOutput=""
+    local separator=""
+
+    for value in "$@"; do
+        [[ -z "${value}" ]] && continue
+        jsonOutput="${jsonOutput}${separator}        \"$(escapeJSONString "${value}")\""
+        separator=$',\n'
+    done
+
+    print -r -- "${jsonOutput}"
+}
+
+function getHomebrewCacheDirectory() {
+    if [[ -n "${loggedInUserHomeDirectory}" ]]; then
+        print -r -- "${loggedInUserHomeDirectory}/Library/Caches/Homebrew"
+    else
+        print -r -- ""
+    fi
+}
+
+function isValidationPathPresent() {
+    local validationPath="$1"
+
+    [[ -n "${validationPath}" && -e "${validationPath}" ]]
 }
 
 function addCompletionReportRecord() {
@@ -623,6 +1192,60 @@ function formattedElapsedTime() {
     /usr/bin/printf '%dh:%dm:%ds\n' $((SECONDS/3600)) $((SECONDS%3600/60)) $((SECONDS%60))
 }
 
+function createDialogCommandFile() {
+    dialogCommandFile=$( /usr/bin/mktemp "/var/tmp/dialogCommandFile_${organizationScriptName}.XXXXXX" )
+    if [[ -z "${dialogCommandFile}" || ! -e "${dialogCommandFile}" ]]; then
+        fatal "Failed to create Dialog command file"
+    fi
+
+    if [[ -n "${loggedInUser}" ]]; then
+        if ! /usr/sbin/chown "${loggedInUser}" "${dialogCommandFile}" 2>/dev/null; then
+            fatal "Failed to set ownership on Dialog command file for ${loggedInUser}."
+        fi
+
+        if ! /bin/chmod 600 "${dialogCommandFile}" 2>/dev/null; then
+            fatal "Failed to set permissions on Dialog command file for ${loggedInUser}."
+        fi
+    fi
+
+    info "Dialog command file created at ${dialogCommandFile}"
+}
+
+function removeDialogCommandFile() {
+    if [[ -n "${dialogCommandFile}" && -e "${dialogCommandFile}" ]]; then
+        rm -f -- "${dialogCommandFile}" 2>/dev/null
+    fi
+
+    dialogCommandFile=""
+}
+
+function closeInspectMode() {
+    local reason="${1:-cleanup}"
+    local gracefulWait="${2:-5}"
+    local waitCount=0
+
+    if [[ -n "${dialogCommandFile}" && -e "${dialogCommandFile}" ]]; then
+        info "Requesting Inspect Mode to quit via command file (${reason})"
+        /bin/echo "quit:" >> "${dialogCommandFile}" 2>/dev/null || warning "Failed to write quit command to Dialog command file"
+    fi
+
+    if [[ -n "${dialogPID}" ]]; then
+        while kill -0 "${dialogPID}" 2>/dev/null && (( waitCount < gracefulWait )); do
+            /bin/sleep 1
+            ((waitCount++))
+        done
+
+        if kill -0 "${dialogPID}" 2>/dev/null; then
+            warning "Inspect Mode wrapper PID ${dialogPID} did not exit after ${gracefulWait} seconds; terminating"
+            kill "${dialogPID}" 2>/dev/null || true
+            /bin/sleep 1
+        fi
+    fi
+
+    dialogPID=""
+    removeDialogCommandFile
+}
+
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -634,13 +1257,8 @@ function quitScript() {
     
     notice "Exiting …"
     
-    # Kill dialog process if still running
-    if [[ -n "${dialogPID}" ]]; then
-        if kill -0 "${dialogPID}" 2>/dev/null; then
-            info "Terminating Inspect Mode (PID: ${dialogPID})"
-            kill "${dialogPID}" 2>/dev/null || true
-            /bin/sleep 1
-        fi
+    if [[ -n "${dialogPID}" || ( -n "${dialogCommandFile}" && -e "${dialogCommandFile}" ) ]]; then
+        closeInspectMode "script exit"
     fi
     
     cleanup
@@ -766,19 +1384,24 @@ fi
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Pre-flight Check: Validate Installomator (if Installomator labels configured)
+# Pre-flight Check: Normalize Homebrew Item Availability
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-if [[ ${#installomatorLabels[@]} -gt 0 ]]; then
-    if [[ ! -x "${organizationInstallomatorFile}" ]]; then
-        warning "Installomator not found at ${organizationInstallomatorFile}"
-        warning "Installomator labels will be skipped"
-    elif [[ ! -s "${organizationInstallomatorFile}" ]]; then
-        fatal "Installomator at ${organizationInstallomatorFile} is zero bytes"
-    else
-        preFlight "Installomator found at ${organizationInstallomatorFile}"
-    fi
+normalizeHomebrewItems
+
+if [[ "${enableHomebrewItems:l}" == "true" ]]; then
+    preFlight "Homebrew items enabled (${#homebrewItems[@]} configured for this run)"
+else
+    preFlight "Homebrew items disabled by configuration"
 fi
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Pre-flight Check: Validate Installomator Labels
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+normalizeInstallomatorLabels
 
 
 
@@ -821,6 +1444,12 @@ function createSYMLiteInspectConfig() {
     local messageText
     local cachePathsJSON
     local sideMessageJSON
+    local logMonitorJSON=""
+    local -a cachePaths=()
+    local -a sideMessages=()
+    local hasInstallomator="false"
+    local hasJamf="false"
+    local hasHomebrew="false"
 
     dialogInspectModeJSONFile=$( /usr/bin/mktemp "/var/tmp/dialogJSONFile_InspectMode_${organizationScriptName}.XXXXXX" )
     if [[ -z "${dialogInspectModeJSONFile}" || ! -e "${dialogInspectModeJSONFile}" ]]; then
@@ -842,20 +1471,29 @@ function createSYMLiteInspectConfig() {
         if [[ "${itemType}" == "installomator" ]]; then
             parseInstallomatorItem "${itemConfig}"
             local jsonBlock="{
-            \"id\": \"${itemLabel}\",
-            \"displayName\": \"${itemDisplayName}\",
+            \"id\": \"$(escapeJSONString "${itemLabel}")\",
+            \"displayName\": \"$(escapeJSONString "${itemDisplayName}")\",
             \"guiIndex\": ${guiIndex},
-            \"paths\": [\"${itemValidationPath}\"],
-            \"icon\": \"${itemIconURL}\"
+            \"paths\": [\"$(escapeJSONString "${itemValidationPath}")\"],
+            \"icon\": \"$(escapeJSONString "${itemIconURL}")\"
         }"
         elif [[ "${itemType}" == "jamf" ]]; then
             parseJamfPolicyItem "${itemConfig}"
             local jsonBlock="{
-            \"id\": \"${itemTrigger}\",
-            \"displayName\": \"${itemDisplayName}\",
+            \"id\": \"$(escapeJSONString "${itemTrigger}")\",
+            \"displayName\": \"$(escapeJSONString "${itemDisplayName}")\",
             \"guiIndex\": ${guiIndex},
-            \"paths\": [\"${itemValidationPath}\"],
-            \"icon\": \"${itemIconURL}\"
+            \"paths\": [\"$(escapeJSONString "${itemValidationPath}")\"],
+            \"icon\": \"$(escapeJSONString "${itemIconURL}")\"
+        }"
+        elif [[ "${itemType}" == "homebrew" ]]; then
+            parseHomebrewItem "${itemConfig}"
+            local jsonBlock="{
+            \"id\": \"$(escapeJSONString "${itemHomebrewID}")\",
+            \"displayName\": \"$(escapeJSONString "${itemDisplayName}")\",
+            \"guiIndex\": ${guiIndex},
+            \"paths\": [\"$(escapeJSONString "${itemValidationPath}")\"],
+            \"icon\": \"$(escapeJSONString "${itemIconURL}")\"
         }"
         else
             warning "Unknown item type for ID: ${itemID}"
@@ -873,71 +1511,72 @@ function createSYMLiteInspectConfig() {
         ((guiIndex++))
     done
 
-    if [[ ${#selectedInstallomatorLabels[@]} -gt 0 && ${#selectedJamfPolicies[@]} -gt 0 ]]; then
-        dialogTitle="Processing ${totalItems} Item"
-        [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}s"
-        messageText="Installing selected applications and executing policies. Items complete when files appear at their validation paths."
-        cachePathsJSON='        "/Library/Application Support/Installomator/Downloads",
-        "/Library/Application Support/JAMF/Downloads",
-        "/Library/Managed Installs/Cache"'
-        sideMessageJSON='        "Thank you for your patience.",
-        "Installation progress is monitored by watching for files to appear.",
-        "Applications are being installed via Installomator.",
-        "Policies are being executed via Jamf Pro.",
-        "Please wait while items are being processed.",
-        "Each item completes when its validation path appears.",
-        "This process may take several minutes.",
-        "The installation will complete automatically.",
-        "A restart may be required after completion."'
-    elif [[ ${#selectedJamfPolicies[@]} -gt 0 ]]; then
-        dialogTitle="Executing ${totalItems} Policy"
-        [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}ies"
-        messageText="Executing selected policies. Items complete when files appear at their validation paths."
-        cachePathsJSON='        "/Library/Application Support/JAMF/Downloads",
-        "/Library/Managed Installs/Cache"'
-        sideMessageJSON='        "Thank you for your patience.",
-        "Progress is monitored by watching for files to appear.",
-        "Policies are being executed via Jamf Pro.",
-        "Please wait while items are being processed.",
-        "Each item completes when its validation path appears.",
-        "This process may take several minutes.",
-        "The installation will complete automatically.",
-        "A restart may be required after completion."'
-    else
-        dialogTitle="Installing ${totalItems} Application"
-        [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}s"
-        messageText="Installing selected applications. Items complete when files appear at their validation paths."
-        cachePathsJSON='        "/Library/Application Support/Installomator/Downloads",
-        "/Library/Managed Installs/Cache"'
-        sideMessageJSON='        "Thank you for your patience.",
-        "Installation progress is monitored by watching for files to appear.",
-        "Applications are being installed via Installomator.",
-        "Please wait while items are being processed.",
-        "Each item completes when its validation path appears.",
-        "This process may take several minutes.",
-        "The installation will complete automatically.",
-        "A restart may be required after completion."'
-    fi
-    
-    # Create the full JSON configuration
-    # Note: Inspect Mode uses dual monitoring:
-    # - logMonitor: Parses Installomator.log for rich status updates (Installomator labels only)
-    # - paths: Watches file system via FSEvents for completion detection (both types)
-    if ! /bin/cat > "${dialogInspectModeJSONFile}" <<EOF
-{
-    "preset": "preset${organizationPreset}",
-    "title": "${dialogTitle}",
-    "message": "${messageText}",
-    "icon": "${mainDialogIcon}",
-    "overlayicon": "${organizationOverlayiconURL}",
-    "iconsize": 120,
-    "size": "compact",
-    "logMonitor": {
-        "path": "${installomatorLog}",
+    [[ ${#selectedInstallomatorLabels[@]} -gt 0 ]] && hasInstallomator="true"
+    [[ ${#selectedJamfPolicies[@]} -gt 0 ]] && hasJamf="true"
+    [[ ${#selectedHomebrewItems[@]} -gt 0 ]] && hasHomebrew="true"
+
+    cachePaths+=("/Library/Managed Installs/Cache")
+    sideMessages+=("Thank you for your patience.")
+    sideMessages+=("Progress is monitored by watching for files to appear.")
+    sideMessages+=("Please wait while items are being processed.")
+    sideMessages+=("Each item completes when its validation path appears.")
+    sideMessages+=("This process may take several minutes.")
+    sideMessages+=("The installation will complete automatically.")
+    sideMessages+=("A restart may be required after completion.")
+
+    if [[ "${hasInstallomator}" == "true" ]]; then
+        logMonitorJSON='    "logMonitor": {
+        "path": "'"$(escapeJSONString "${installomatorLog}")"'",
         "preset": "installomator",
         "autoMatch": true,
         "startFromEnd": true
-    },
+    },'
+        cachePaths+=("/Library/Application Support/Installomator/Downloads")
+        sideMessages+=("Applications are being installed via Installomator.")
+    fi
+
+    if [[ "${hasJamf}" == "true" ]]; then
+        cachePaths+=("/Library/Application Support/JAMF/Downloads")
+        sideMessages+=("Policies are being executed via Jamf Pro.")
+    fi
+
+    if [[ "${hasHomebrew}" == "true" ]]; then
+        [[ -n "${loggedInUserHomeDirectory}" ]] && cachePaths+=("${loggedInUserHomeDirectory}/Library/Caches/Homebrew")
+        cachePaths+=("/Library/Caches/Homebrew")
+        sideMessages+=("Approved Homebrew packages are being installed in the logged-in user context.")
+    fi
+
+    cachePathsJSON="$(buildJSONStringArray "${cachePaths[@]}")"
+    sideMessageJSON="$(buildJSONStringArray "${sideMessages[@]}")"
+
+    if [[ "${hasJamf}" == "true" && "${hasInstallomator}" != "true" && "${hasHomebrew}" != "true" ]]; then
+        dialogTitle="Executing ${totalItems} Policy"
+        [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}ies"
+        messageText="Executing selected policies. Items complete when files appear at their validation paths."
+    elif [[ "${hasJamf}" == "true" ]]; then
+        dialogTitle="Processing ${totalItems} Item"
+        [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}s"
+        messageText="Processing selected software and policies. Items complete when files appear at their validation paths."
+    else
+        dialogTitle="Installing ${totalItems} Item"
+        [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}s"
+        messageText="Installing selected software. Items complete when files appear at their validation paths."
+    fi
+    
+    # Create the full JSON configuration
+    # Note: Inspect Mode uses dual monitoring when Installomator items are selected:
+    # - logMonitor: Parses Installomator.log for rich status updates (Installomator labels only)
+    # - paths: Watches file system via FSEvents for completion detection (all item types)
+    if ! /bin/cat > "${dialogInspectModeJSONFile}" <<EOF
+{
+    "preset": "preset${organizationPreset}",
+    "title": "$(escapeJSONString "${dialogTitle}")",
+    "message": "$(escapeJSONString "${messageText}")",
+    "icon": "$(escapeJSONString "${mainDialogIcon}")",
+    "overlayicon": "$(escapeJSONString "${organizationOverlayiconURL}")",
+    "iconsize": 120,
+    "size": "compact",
+${logMonitorJSON}
     "cachePaths": [
 ${cachePathsJSON}
     ],
@@ -1046,8 +1685,14 @@ function parseOperationsCSV() {
                 selectedItems+=("${itemID}")
             fi
         else
-            if [[ "${enableJamfPolicyItems:l}" != "true" ]] && isConfiguredJamfPolicyItem "${itemID}"; then
+            if isConfiguredInstallomatorLabel "${itemID}"; then
+                warning "Skipping CSV item '${itemID}': Installomator label is unavailable in ${organizationInstallomatorFile}"
+            elif [[ "${enableJamfPolicyItems:l}" != "true" ]] && isConfiguredJamfPolicyItem "${itemID}"; then
                 warning "Skipping CSV item '${itemID}': Jamf policy items are disabled"
+            elif [[ "${enableHomebrewItems:l}" != "true" ]] && isConfiguredHomebrewItem "${itemID}"; then
+                warning "Skipping CSV item '${itemID}': Homebrew items are disabled"
+            elif isConfiguredHomebrewItem "${itemID}"; then
+                warning "Skipping CSV item '${itemID}': Homebrew item is unavailable in this run"
             else
                 warning "Unknown item ID in CSV: '${itemID}'"
             fi
@@ -1068,14 +1713,34 @@ function parseDialogSelections() {
     local output="$1"
     selectedItems=()
 
+    if [[ ${#selectionDialogOptionRecords[@]} -gt 0 ]]; then
+        local itemID=""
+
+        for itemID in "${selectionDialogOptionRecords[@]}"; do
+            if command -v jq >/dev/null 2>&1; then
+                if echo "${output}" | jq -e --arg key "${itemID}" '.[$key] == true' >/dev/null 2>&1; then
+                    selectedItems+=("${itemID}")
+                fi
+                continue
+            fi
+
+            if echo "${output}" | grep -Fq "\"${itemID}\":true" || echo "${output}" | grep -Fq "\"${itemID}\": true"; then
+                selectedItems+=("${itemID}")
+            fi
+        done
+
+        info "Parsed dialog selections: ${#selectedItems[@]} items selected"
+        return 0
+    fi
+
     # Get all possible item IDs
     local allIDs
     allIDs=($(getAllItemIDs))
 
-    # Primary: regex search for pattern like "itemID": true
+    # Primary: fixed-string search for pattern like "itemID": true
     local itemID
     for itemID in "${allIDs[@]}"; do
-        if echo "${output}" | grep -Eiq "${itemID}\"?[[:space:]]*:[[:space:]]*(true|1|yes)"; then
+        if echo "${output}" | grep -Fq "\"${itemID}\":true" || echo "${output}" | grep -Fq "\"${itemID}\": true"; then
             selectedItems+=("${itemID}")
         fi
     done
@@ -1083,13 +1748,43 @@ function parseDialogSelections() {
     # Fallback: JSON-aware jq parsing if grep found nothing
     if [[ ${#selectedItems[@]} -eq 0 ]] && command -v jq >/dev/null 2>&1; then
         for itemID in "${allIDs[@]}"; do
-            if echo "${output}" | jq -e ".${itemID} == true" >/dev/null 2>&1; then
+            if echo "${output}" | jq -e --arg key "${itemID}" '.[$key] == true' >/dev/null 2>&1; then
                 selectedItems+=("${itemID}")
             fi
         done
     fi
     
     info "Parsed dialog selections: ${#selectedItems[@]} items selected"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Show No Selectable Items Dialog
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function showNoSelectableItemsDialog() {
+    requireLoggedInUser "display no selectable items dialog"
+
+    local messageText="There are no selectable items available right now."
+
+    if [[ ${selectionDialogTotalItemCount} -gt 0 ]] \
+    && [[ "${selectionDialogStatusSublabelsEnabled:l}" == "true" ]] \
+    && [[ ${selectionDialogDisabledItemCount} -eq ${selectionDialogTotalItemCount} ]]; then
+        messageText="All configured items are already installed, so there is nothing new to process right now."
+    fi
+
+    ${dialogBinary} \
+        --title "${humanReadableScriptName}" \
+        --infotext "${scriptVersion}" \
+        --messagefont "size=${fontSize}" \
+        --message "${messageText}" \
+        --icon "${mainDialogIcon}" \
+        --button1text "Close" \
+        --height 325 \
+        --width 500 2>/dev/null
+
+    notice "No selectable items were available in the interactive picker"
 }
 
 
@@ -1110,7 +1805,6 @@ function showSelectionDialog() {
 
     requireLoggedInUser "display selection dialog"
 
-    local checkboxArgs=()
     local baseMessage
     local warningMessage=""
     local messageText
@@ -1118,30 +1812,20 @@ function showSelectionDialog() {
     local rc
 
     # Build message
-    baseMessage="**$(date +'Happy %A,') ${loggedInUserFirstname}!**\n\nSelect one or more applications to install."
+    baseMessage="**$(date +'Happy %A,') ${loggedInUserFirstname}!**\n\nSelect items to install; Homebrew casks and formulae are available **after** \`brew\` has been installed."
 
     # Build unified checkbox list (Installomator + Jamf, sorted together by display name)
-    local -a allSortKeys=()
-    for item in "${installomatorLabels[@]}"; do
-        local parts=("${(@s: | :)item}")
-        allSortKeys+=("${parts[2]} | installomator | ${item}")
-    done
-    for item in "${jamfPolicyItems[@]}"; do
-        local parts=("${(@s: | :)item}")
-        allSortKeys+=("${parts[2]} | jamf | ${item}")
-    done
-    for entry in "${(oi)allSortKeys[@]}"; do
-        local entryParts=("${(@s: | :)entry}")
-        local itemType="${entryParts[2]}"
-        local itemConfig="${(j: | :)entryParts[3,-1]}"
-        if [[ "${itemType}" == "installomator" ]]; then
-            parseInstallomatorItem "${itemConfig}"
-            checkboxArgs+=(--checkbox "${itemDisplayName},name=${itemLabel},icon=${itemIconURL}")
-        elif [[ "${itemType}" == "jamf" ]]; then
-            parseJamfPolicyItem "${itemConfig}"
-            checkboxArgs+=(--checkbox "${itemDisplayName},name=${itemTrigger},icon=${itemIconURL}")
-        fi
-    done
+    getSelectionDialogCheckboxesJSON
+
+    if [[ ${selectionDialogTotalItemCount} -eq 0 ]]; then
+        showNoSelectableItemsDialog
+        quitScript 0
+    fi
+
+    if [[ ${#selectionDialogOptionRecords[@]} -eq 0 ]]; then
+        showNoSelectableItemsDialog
+        quitScript 0
+    fi
 
     # Loop until at least one item is selected
     while true; do
@@ -1156,18 +1840,21 @@ function showSelectionDialog() {
             --messagefont "size=${fontSize}" \
             --message "${messageText}" \
             --icon "${mainDialogIcon}" \
+            --jsonstring "{\"checkbox\":${selectionDialogCheckboxesJSON}}" \
             --checkboxstyle "switch,large" \
             --json \
-            --button1text "Install" \
+            --button1text "Continue" \
             --button2text "Cancel" \
             --height 675 \
-            --width 900 \
-            "${checkboxArgs[@]}" 2>/dev/null)"
+            --width 900 2>/dev/null)"
 
         rc=$?
-        if [[ ${rc} -ne 0 ]]; then
+        if [[ ${rc} -eq 2 ]]; then
             info "User cancelled selection dialog"
-            quitScript 2
+            quitScript 0
+        elif [[ ${rc} -ne 0 ]]; then
+            errorOut "Selection dialog exited unexpectedly (return code: ${rc})"
+            quitScript "${rc}"
         fi
 
         parseDialogSelections "${dialogOutput}"
@@ -1178,7 +1865,7 @@ function showSelectionDialog() {
 
         # Warn and retry if no selections
         warning "No items selected in picker; re-showing selection dialog"
-        warningMessage="**:red[Warning:]** Please select at least _one_ option before clicking **Install**."
+        warningMessage="**:red[Warning:]** Please select at least _one_ option before clicking **Continue**."
     done
 }
 
@@ -1191,6 +1878,7 @@ function showSelectionDialog() {
 function separateSelectedItemsByType() {
     selectedInstallomatorLabels=()
     selectedJamfPolicies=()
+    selectedHomebrewItems=()
     
     for itemID in "${selectedItems[@]}"; do
         local itemType
@@ -1200,10 +1888,12 @@ function separateSelectedItemsByType() {
             selectedInstallomatorLabels+=("${itemID}")
         elif [[ "${itemType}" == "jamf" ]]; then
             selectedJamfPolicies+=("${itemID}")
+        elif [[ "${itemType}" == "homebrew" ]]; then
+            selectedHomebrewItems+=("${itemID}")
         fi
     done
     
-    info "Separated selections: ${#selectedInstallomatorLabels[@]} Installomator, ${#selectedJamfPolicies[@]} Jamf policies"
+    info "Separated selections: ${#selectedInstallomatorLabels[@]} Installomator, ${#selectedJamfPolicies[@]} Jamf policies, ${#selectedHomebrewItems[@]} Homebrew"
 }
 
 
@@ -1309,6 +1999,166 @@ function executeJamfPolicy() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Update Homebrew Metadata (Optional)
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function updateHomebrewMetadataIfNeeded() {
+    local homebrewUpdateExitCode=0
+    local homebrewCacheDirectory=""
+
+    if [[ "${homebrewUpdateBeforeInstall:l}" != "true" ]]; then
+        return 0
+    fi
+
+    if [[ "${homebrewUpdateAttempted}" == "true" ]]; then
+        [[ "${homebrewUpdateSucceeded}" == "true" ]] && return 0
+        return 1
+    fi
+
+    homebrewUpdateAttempted="true"
+
+    if ! refreshHomebrewExecutionUser; then
+        errorOut "No logged-in user is available to update Homebrew metadata"
+        homebrewUpdateSucceeded="false"
+        return 1
+    fi
+
+    homebrewCacheDirectory="$(getHomebrewCacheDirectory)"
+
+    notice "Updating Homebrew metadata as ${loggedInUser} …"
+    runAsUser "${loggedInUser}" /usr/bin/env \
+        HOME="${loggedInUserHomeDirectory}" \
+        USER="${loggedInUser}" \
+        LOGNAME="${loggedInUser}" \
+        XDG_CACHE_HOME="${loggedInUserHomeDirectory}/Library/Caches" \
+        HOMEBREW_CACHE="${homebrewCacheDirectory}" \
+        NONINTERACTIVE=1 \
+        HOMEBREW_NO_ENV_HINTS=1 \
+        "${effectiveBrewPath}" update 2>&1 | while IFS= read -r homebrewOutputLine; do
+        logComment "Homebrew (update): ${homebrewOutputLine}"
+    done
+    homebrewUpdateExitCode=${pipestatus[1]}
+
+    if [[ ${homebrewUpdateExitCode} -ne 0 ]]; then
+        errorOut "Homebrew update failed (exit code: ${homebrewUpdateExitCode})"
+        homebrewUpdateSucceeded="false"
+        return 1
+    fi
+
+    info "Homebrew metadata update completed"
+    homebrewUpdateSucceeded="true"
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Execute Homebrew Item
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function executeHomebrewItem() {
+    local homebrewID="$1"
+    local brewMode="$2"
+    local brewToken="$3"
+    local validationPath="$4"
+    local displayName="$5"
+    local iconURL="$6"
+    local homebrewExitCode=0
+    local homebrewCacheDirectory=""
+    local -a brewCommand=()
+
+    if [[ -n "${validationPath}" && -e "${validationPath}" ]]; then
+        info "Skipping Homebrew item '${homebrewID}': ${validationPath} already exists"
+        skippedItems+=("${displayName}")
+        addCompletionReportRecord "${displayName}" "alreadyInstalled" "success" "${iconURL}" "No action was needed" "Already installed"
+        return 0
+    fi
+
+    if [[ -z "${effectiveBrewPath}" || ! -x "${effectiveBrewPath}" ]]; then
+        errorOut "Homebrew item '${homebrewID}' cannot run because no working brew binary is available"
+        failedItems+=("${displayName}")
+        addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "Homebrew is not installed or not executable" "Not installed"
+        return 1
+    fi
+
+    if ! refreshHomebrewExecutionUser; then
+        errorOut "Homebrew item '${homebrewID}' cannot run because no logged-in user is available"
+        failedItems+=("${displayName}")
+        addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "A logged-in user is required for Homebrew installs" "Not installed"
+        return 1
+    fi
+
+    homebrewCacheDirectory="$(getHomebrewCacheDirectory)"
+
+    if ! updateHomebrewMetadataIfNeeded; then
+        failedItems+=("${displayName}")
+        addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "Homebrew metadata update failed" "Not installed"
+        return 1
+    fi
+
+    notice "Installing Homebrew ${brewMode} '${brewToken}' (${displayName}) as ${loggedInUser} …"
+
+    if [[ "${brewMode}" == "cask" ]]; then
+        brewCommand=(
+            /usr/bin/env
+            HOME="${loggedInUserHomeDirectory}"
+            USER="${loggedInUser}"
+            LOGNAME="${loggedInUser}"
+            XDG_CACHE_HOME="${loggedInUserHomeDirectory}/Library/Caches"
+            HOMEBREW_CACHE="${homebrewCacheDirectory}"
+            NONINTERACTIVE=1
+            HOMEBREW_NO_AUTO_UPDATE=1
+            HOMEBREW_NO_ENV_HINTS=1
+            "${effectiveBrewPath}"
+            install
+            --cask
+            "${brewToken}"
+        )
+    else
+        brewCommand=(
+            /usr/bin/env
+            HOME="${loggedInUserHomeDirectory}"
+            USER="${loggedInUser}"
+            LOGNAME="${loggedInUser}"
+            XDG_CACHE_HOME="${loggedInUserHomeDirectory}/Library/Caches"
+            HOMEBREW_CACHE="${homebrewCacheDirectory}"
+            NONINTERACTIVE=1
+            HOMEBREW_NO_AUTO_UPDATE=1
+            HOMEBREW_NO_ENV_HINTS=1
+            "${effectiveBrewPath}"
+            install
+            "${brewToken}"
+        )
+    fi
+
+    runAsUser "${loggedInUser}" "${brewCommand[@]}" 2>&1 | while IFS= read -r homebrewOutputLine; do
+        logComment "Homebrew (${homebrewID}): ${homebrewOutputLine}"
+    done
+    homebrewExitCode=${pipestatus[1]}
+
+    if [[ ${homebrewExitCode} -ne 0 ]]; then
+        errorOut "Homebrew install failed for '${homebrewID}' (exit code: ${homebrewExitCode})"
+        failedItems+=("${displayName}")
+        addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "Please contact support if this package is required" "Not installed"
+        return 1
+    fi
+
+    if [[ -n "${validationPath}" && -e "${validationPath}" ]]; then
+        info "Homebrew install completed for '${homebrewID}' and validated"
+        completedItems+=("${displayName}")
+        addCompletionReportRecord "${displayName}" "installed" "success" "${iconURL}" "Ready to use" "Installed"
+        return 0
+    fi
+
+    warning "Homebrew install '${homebrewID}' completed but validation path not found: ${validationPath}"
+    completedItems+=("${displayName}")
+    addCompletionReportRecord "${displayName}" "needsReview" "error" "${iconURL}" "Installed, but we could not fully confirm the result" "Needs review"
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Unified Execution Dispatcher
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -1334,8 +2184,10 @@ function executeSYMLiteItems() {
 
         # Launch Dialog in background for real-time progress
         notice "Launching Inspect Mode dialog …"
-        runAsUser "${loggedInUser}" /usr/bin/env DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --inspect-mode &
-        dialogPID=$!
+        createDialogCommandFile
+        if ! launchAsUserInBackground "${loggedInUser}" /usr/bin/env DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --commandfile "${dialogCommandFile}" --inspect-mode; then
+            fatal "Failed to launch Inspect Mode dialog"
+        fi
         info "Inspect Mode PID: ${dialogPID}"
 
         # Give dialog a moment to launch
@@ -1358,6 +2210,9 @@ function executeSYMLiteItems() {
         elif [[ "${itemType}" == "jamf" ]]; then
             parseJamfPolicyItem "${itemConfig}"
             executeJamfPolicy "${itemTrigger}" "${itemValidationPath}" "${itemDisplayName}" "${itemIconURL}"
+        elif [[ "${itemType}" == "homebrew" ]]; then
+            parseHomebrewItem "${itemConfig}"
+            executeHomebrewItem "${itemHomebrewID}" "${itemBrewMode}" "${itemBrewToken}" "${itemValidationPath}" "${itemDisplayName}" "${itemIconURL}"
         else
             warning "Unknown item type for ID: ${itemID}"
         fi
@@ -1374,11 +2229,12 @@ function executeSYMLiteItems() {
         done
 
         if kill -0 "${dialogPID}" 2>/dev/null; then
-            warning "Dialog did not close after ${maxWait} seconds; terminating"
-            kill "${dialogPID}" 2>/dev/null || true
-            sleep 1
+            warning "Dialog did not close after ${maxWait} seconds; requesting quit"
+            closeInspectMode "timeout waiting for Review Results"
         fi
 
+        dialogPID=""
+        removeDialogCommandFile
         info "Inspect Mode closed."
     fi
     
@@ -1394,12 +2250,8 @@ function executeSYMLiteItems() {
 function handleInterruption() {
     warning "Script interrupted by user"
     
-    # Kill dialog if still running
-    if [[ -n "${dialogPID}" ]]; then
-        if kill -0 "${dialogPID}" 2>/dev/null; then
-            info "Terminating Inspect Mode (PID: ${dialogPID})"
-            kill "${dialogPID}" 2>/dev/null || true
-        fi
+    if [[ -n "${dialogPID}" || ( -n "${dialogCommandFile}" && -e "${dialogCommandFile}" ) ]]; then
+        closeInspectMode "interrupt"
     fi
     
     cleanup
@@ -1436,7 +2288,7 @@ function showCompletionDialog() {
     local statusText=""
     local dialogTitle=""
     local dialogIcon=""
-    local dialogMessage="Here's the status of your selected software, ${loggedInUserFirstname}.\n\n"
+    local dialogMessage="Here's the status of your selected items, ${loggedInUserFirstname}.\n\n"
     local listItemsJSON=""
     local completionDialogJSON=""
     local jsonValidationError=""
@@ -1469,7 +2321,7 @@ function showCompletionDialog() {
         dialogTitle="Completed with Warnings"
         dialogIcon="SF=exclamationmark.triangle.fill,weight=bold,colour1=#F8D84A,colour2=#D18E00"
     else
-        dialogTitle="Installation Complete"
+        dialogTitle="Processing Complete"
         dialogIcon="SF=checkmark.circle.fill,weight=bold,colour1=#63CA56,colour2=#2D7D2B"
     fi
 
@@ -1581,7 +2433,7 @@ function promptForRestart() {
         --title "Restart Recommended" \
         --infotext "${scriptVersion}" \
         --messagefont "size=${restartFontSize}" \
-        --message "**A restart is recommended after performing any installation.**\n\nWould you like to restart now?" \
+        --message "**A restart may be recommended after installing software or applying these changes.**\n\nWould you like to restart now?" \
         --icon "SF=restart.circle.fill,colour=#969899" \
         --buttonstyle "stack" \
         --button1text "Restart Now" \
@@ -1608,9 +2460,12 @@ function promptForRestart() {
 ####################################################################################################
 
 notice "SYM-Lite initialized successfully"
-notice "Configuration: ${#installomatorLabels[@]} Installomator labels, ${#jamfPolicyItems[@]} Jamf policy items"
+notice "Configuration: ${#installomatorLabels[@]} Installomator labels, ${#jamfPolicyItems[@]} Jamf policy items, ${#homebrewItems[@]} Homebrew items"
 if [[ "${enableJamfPolicyItems:l}" != "true" ]]; then
     notice "Jamf policy items are disabled by configuration"
+fi
+if [[ "${enableHomebrewItems:l}" != "true" ]]; then
+    notice "Homebrew items are disabled by configuration"
 fi
 notice "Operation mode: ${operationMode}"
 

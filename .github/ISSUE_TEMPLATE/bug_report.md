@@ -37,8 +37,8 @@ Please supply the full command used, and if applicable, add full output from Ter
 If applicable, add screenshots to help explain your problem.
 
 **Environment (please complete the following information):**
-- macOS version (for example: `15.7.4` or `26.4`)
-- SYM-Lite version from `main` (for example: `1.0.0b1`) - please test the latest `main` branch version before filing (unless directed otherwise by a project maintainer).
+- macOS version (for example: `26.4.1`)
+- SYM-Lite version from `main` (for example: `1.0.0`) - please test the latest `main` branch version before filing (unless directed otherwise by a project maintainer).
 - swiftDialog version
 - Installomator version, if relevant
 - Jamf Pro binary version, if relevant
