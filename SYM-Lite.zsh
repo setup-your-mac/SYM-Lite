@@ -1614,6 +1614,46 @@ EOF
     return 0
 }
 
+function prepareInspectConfigForUser() {
+    if [[ -z "${dialogInspectModeJSONFile}" || ! -e "${dialogInspectModeJSONFile}" ]]; then
+        fatal "Dialog inspect config file is unavailable for user handoff."
+    fi
+
+    if [[ -z "${loggedInUser}" ]]; then
+        fatal "No logged-in user available to receive Dialog inspect config."
+    fi
+
+    if ! /usr/sbin/chown "${loggedInUser}" "${dialogInspectModeJSONFile}" 2>/dev/null; then
+        fatal "Failed to set ownership on Dialog inspect config for ${loggedInUser}."
+    fi
+
+    if ! /bin/chmod 600 "${dialogInspectModeJSONFile}" 2>/dev/null; then
+        fatal "Failed to set permissions on Dialog inspect config for ${loggedInUser}."
+    fi
+
+    info "Dialog inspect config handed off to ${loggedInUser}."
+}
+
+function prepareCompletionDialogConfigForUser() {
+    if [[ -z "${completionDialogJSONFile}" || ! -e "${completionDialogJSONFile}" ]]; then
+        fatal "Completion dialog config file is unavailable for user handoff."
+    fi
+
+    if [[ -z "${loggedInUser}" ]]; then
+        fatal "No logged-in user available to receive completion dialog config."
+    fi
+
+    if ! /usr/sbin/chown "${loggedInUser}" "${completionDialogJSONFile}" 2>/dev/null; then
+        fatal "Failed to set ownership on completion dialog config for ${loggedInUser}."
+    fi
+
+    if ! /bin/chmod 600 "${completionDialogJSONFile}" 2>/dev/null; then
+        fatal "Failed to set permissions on completion dialog config for ${loggedInUser}."
+    fi
+
+    info "Completion dialog config handed off to ${loggedInUser}."
+}
+
 ####################################################################################################
 #
 # Selection Interface Functions
@@ -2140,10 +2180,12 @@ function executeSYMLiteItems() {
             fatal "Failed to create Inspect Mode configuration"
         fi
 
+        prepareInspectConfigForUser
+
         # Launch Dialog in background for real-time progress
         notice "Launching Inspect Mode dialog …"
         createDialogCommandFile
-        if ! launchAsUserInBackground "" /usr/bin/env DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --commandfile "${dialogCommandFile}" --inspect-mode; then
+        if ! launchAsUserInBackground "${loggedInUser}" /usr/bin/env DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --commandfile "${dialogCommandFile}" --inspect-mode; then
             fatal "Failed to launch Inspect Mode dialog"
         fi
         info "Inspect Mode PID: ${dialogPID}"
@@ -2323,6 +2365,8 @@ EOF
         fatal "Completion dialog JSON is malformed: ${jsonValidationError}"
     fi
 
+    prepareCompletionDialogConfigForUser
+
     while [[ ! -f "${completionDialogJSONFile}" || ! -r "${completionDialogJSONFile}" ]] && [[ ${retryCount} -lt ${maxRetries} ]]; do
         sleep 0.2
         ((retryCount++))
@@ -2335,7 +2379,7 @@ EOF
         fatal "Completion dialog JSON file (${unreadableCompletionDialogJSONFile}) is not readable after ${maxRetries} attempts"
     fi
 
-    "${dialogBinary}" --jsonfile "${completionDialogJSONFile}" 2>/dev/null
+    runAsUser "${loggedInUser}" "${dialogBinary}" --jsonfile "${completionDialogJSONFile}" 2>/dev/null
 
     rm -f -- "${completionDialogJSONFile}" 2>/dev/null
     completionDialogJSONFile=""

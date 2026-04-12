@@ -19,7 +19,7 @@
 
 ## Runtime model
 - The script is designed to run as `root`. Logging, temp file creation, Installomator execution, and Jamf execution assume elevated privileges.
-- UI actions require an active logged-in GUI user. Interactive pre-flight waits up to 120 seconds for a valid console user, and dialogs are launched by the root-owned script once a valid console user is present.
+- UI actions require an active logged-in GUI user. Interactive pre-flight waits up to 120 seconds for a valid console user, and some dialog flows hand temporary config files to the logged-in user before launch.
 - Item definitions live in three arrays near the top of `SYM-Lite.zsh`:
   - `installomatorLabels`
   - `jamfPolicyItems`
@@ -40,7 +40,7 @@
   - swiftDialog bootstrap via GitHub API and GitHub release download
   - remote icon assets used in dialogs
   - Homebrew metadata/package downloads when Homebrew items are selected
-- Inspect Mode configuration is written to a temp JSON file under `/var/tmp` and consumed by the root-owned dialog process at launch.
+- Inspect Mode configuration is written to a temp JSON file under `/var/tmp` and handed off to the logged-in GUI user before launch.
 - Logging writes to `/var/log/org.churchofjesuschrist.log` by default, and Installomator progress is read from `/var/log/Installomator.log`.
 
 ## Logging
