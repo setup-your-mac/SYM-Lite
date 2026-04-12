@@ -163,7 +163,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
+      security-events: write
     steps:
       - name: Check Out Repository
         # Fetch full history so Gitleaks can scan past commits on protected branches.
@@ -174,27 +174,41 @@ jobs:
       - name: Run Gitleaks (Blocking)
         id: gitleaks_scan
         continue-on-error: true
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_COMMENTS: "true"
-          GITLEAKS_ENABLE_SUMMARY: "true"
+        # The official action now requires a GITLEAKS_LICENSE secret for organization-owned repos.
+        # Use the community wrapper so this workflow stays runnable without extra paid/free org setup.
+        uses: gacts/gitleaks@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           # Future tuning examples:
-          # GITLEAKS_CONFIG: .gitleaks.toml
-          # Use `.gitleaksignore` or allowlists for accepted false positives.
-          # Org-owned repos also need GITLEAKS_LICENSE in repository or organization secrets.
+          # version: latest
+          # config-path: .github/.gitleaks.toml
+          # fail-on-error: true
+
+      - name: Upload Gitleaks Findings To Code Scanning
+        id: upload_sarif
+        if: steps.gitleaks_scan.outputs.sarif != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.gitleaks_scan.outputs.sarif }}
+          category: gitleaks
 
       - name: Finalize Gitleaks Result
         if: success() || failure()
         shell: bash
         run: |
           scan_outcome="${{ steps.gitleaks_scan.outcome }}"
+          scan_exit_code="${{ steps.gitleaks_scan.outputs.exit-code }}"
+          upload_outcome="${{ steps.upload_sarif.outcome }}"
 
-          if [[ "${scan_outcome}" == "success" ]]; then
+          if [[ "${scan_outcome}" == "success" && ( -z "${scan_exit_code}" || "${scan_exit_code}" == "0" ) ]]; then
             {
               echo "### Gitleaks"
               echo
               echo "✅ No leaks found"
+              if [[ "${upload_outcome}" == "success" ]]; then
+                echo
+                echo "SARIF uploaded to GitHub code scanning successfully."
+              fi
             } >> "${GITHUB_STEP_SUMMARY}"
             exit 0
           fi
@@ -203,6 +217,12 @@ jobs:
             echo "### Gitleaks"
             echo
             echo "❌ Potential secrets detected or Gitleaks execution failed."
+            echo
+            if [[ "${upload_outcome}" == "success" ]]; then
+              echo "Findings were uploaded to GitHub code scanning."
+            else
+              echo "SARIF upload did not complete. Check the Gitleaks step output."
+            fi
             echo
             echo "Tune accepted false positives with \`.gitleaks.toml\` or \`.gitleaksignore\` if needed."
           } >> "${GITHUB_STEP_SUMMARY}"
