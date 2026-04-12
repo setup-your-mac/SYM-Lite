@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite)
 
-# SYM-Lite (1.0.0b7)
+# SYM-Lite (1.0.0)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels), Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies), and approved Homebrew casks/formulas through a unified [swiftDialog](https://swiftdialog.app) selection interface
 
@@ -561,6 +561,6 @@ Set `restartPromptEnabled="false"` in the script to skip the prompt entirely in 
 
 ---
 
-**Version:** 1.0.0b6  
+**Version:** 1.0.0  
 **Date:** 08-Apr-2026  
 **Author:** Dan K. Snelson (@dan-snelson)

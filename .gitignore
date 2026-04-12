@@ -1,5 +1,5 @@
 # SYM-Lite
-## Version 1.0.0b1
+## Version 1.0.0
 
 
 
@@ -28,7 +28,7 @@ Icon?
 *.zwc
 
 # Local deployment script (contains versioning logic)
-.deploySYMLite.zsh
+.deploy*
 
 # Version tracking (local only)
 VERSION.txt

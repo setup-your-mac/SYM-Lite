@@ -16,11 +16,8 @@
 #
 # HISTORY
 #
-# Version 1.0.0b7, 09-Apr-2026, Dan K. Snelson (@dan-snelson)
-# - Changed interactive selection-dialog cancel handling to exit cleanly so intentional user cancellations do not fail Jamf policies.
-# - Preserved non-zero exits for unexpected swiftDialog return codes during picker display.
-# - Added command-file-driven Inspect Mode shutdown so timeout cleanup dismisses the visible swiftDialog window.
-# - Launched Inspect Mode through a single-pass background helper to avoid fallback-driven dialog relaunches.
+# Version 1.0.0, 12-Apr-2026, Dan K. Snelson (@dan-snelson)
+# - Official 1.0.0 release
 #
 ####################################################################################################
 
@@ -37,7 +34,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.0.0b7"
+scriptVersion="1.0.0"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"

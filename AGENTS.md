@@ -1,6 +1,6 @@
 # SYM-Lite — Agent Instructions
 
-> **Author**: Dan K. Snelson | **Version**: 1.0.0b6 | **Language**: zsh (Shell) | **Platform**: macOS only | **License**: MIT
+> **Author**: Dan K. Snelson | **Version**: 1.0.0 | **Language**: zsh (Shell) | **Platform**: macOS only | **License**: MIT
 
 ## Big picture
 - SYM-Lite is a macOS-only, root-run script that unifies Installomator label execution, Jamf Pro policy triggers, and approved Homebrew package installs behind a single swiftDialog-driven workflow.
@@ -13,7 +13,9 @@
 1. **`SYM-Lite.zsh`** (CORE) — Single entrypoint and source of truth. Handles logging, pre-flight validation, selection parsing, Inspect Mode JSON generation, Installomator execution, Jamf execution, Homebrew execution, completion dialogs, and restart flow.
 2. **`README.md`** (DOCS) — Operator-facing usage and behavior guide. Keep it aligned with user-visible workflow or configuration changes.
 3. **`CHANGELOG.md`** (HISTORY) — Running history of all released versions. This is the canonical long-term change record for the repo.
-4. **`.gitignore`** (HYGIENE) — Minimal macOS and zsh ignore rules. Do not expand it casually.
+4. **`SECURITY.md`** (SECURITY) — Security policy, supported-version statement, and private vulnerability reporting instructions.
+5. **`.github/workflows/security-scan.yml`** (AUTOMATION) — Repository security scanning workflow for Semgrep, Gitleaks, `zsh -n`, and ShellCheck.
+6. **`.gitignore`** (HYGIENE) — Minimal macOS and zsh ignore rules. Do not expand it casually.
 
 ## Runtime model
 - The script is designed to run as `root`. Logging, temp file creation, Installomator execution, and Jamf execution assume elevated privileges.
