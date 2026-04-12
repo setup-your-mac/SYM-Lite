@@ -71,7 +71,7 @@ installomatorLabels=(
 )
 ```
 
-At runtime, SYM-Lite validates each configured label against `organizationInstallomatorFile` before building the picker or accepting silent-mode CSV input. If a label is missing from that Installomator file, SYM-Lite logs an error and removes it from the current run.
+At runtime, SYM-Lite validates each configured label against `organizationInstallomatorFile` before building the picker or accepting silent-mode CSV input. If a label is missing from that Installomator file, or if the Installomator file is unavailable or unreadable, SYM-Lite logs a warning or error and removes Installomator labels from the current run while leaving other item types available.
 
 ### Adding Homebrew Items
 
@@ -203,8 +203,9 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,cask:docker,formula:no
 - **swiftDialog** 3.0.1.4955+ (auto-installed if missing)
 
 ### External Command Dependencies
-- **Installomator** — Required for selected Installomator labels to succeed
+- **Installomator** — Required only when Installomator labels are configured and available for the current run
   - Configured Installomator labels are validated early against the active `organizationInstallomatorFile`
+  - If the Installomator file is unavailable or cannot be parsed, Installomator labels are hidden and skipped for that run
 - **Homebrew Binary** — Required only when `enableHomebrewItems="true"` and Homebrew items are configured
 - **Jamf Pro Binary** — Required only when `enableJamfPolicyItems="true"` and Jamf policy items are configured
 

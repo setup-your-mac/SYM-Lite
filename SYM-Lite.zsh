@@ -587,27 +587,41 @@ function normalizeInstallomatorLabels() {
     fi
 
     if [[ ! -e "${organizationInstallomatorFile}" ]]; then
-        fatal "Installomator not found at ${organizationInstallomatorFile}"
+        installomatorLabels=()
+        warning "Installomator not found at ${organizationInstallomatorFile}; hiding Installomator labels for this run"
+        return 0
     elif [[ ! -f "${organizationInstallomatorFile}" ]]; then
-        fatal "Installomator is not a regular file at ${organizationInstallomatorFile}"
+        installomatorLabels=()
+        warning "Installomator is not a regular file at ${organizationInstallomatorFile}; hiding Installomator labels for this run"
+        return 0
     elif [[ ! -r "${organizationInstallomatorFile}" ]]; then
-        fatal "Installomator is not readable at ${organizationInstallomatorFile}"
+        installomatorLabels=()
+        warning "Installomator is not readable at ${organizationInstallomatorFile}; hiding Installomator labels for this run"
+        return 0
     elif [[ ! -x "${organizationInstallomatorFile}" ]]; then
-        fatal "Installomator is not executable at ${organizationInstallomatorFile}"
+        installomatorLabels=()
+        warning "Installomator is not executable at ${organizationInstallomatorFile}; hiding Installomator labels for this run"
+        return 0
     elif [[ ! -s "${organizationInstallomatorFile}" ]]; then
-        fatal "Installomator at ${organizationInstallomatorFile} is zero bytes"
+        installomatorLabels=()
+        warning "Installomator at ${organizationInstallomatorFile} is zero bytes; hiding Installomator labels for this run"
+        return 0
     fi
 
     preFlight "Installomator found at ${organizationInstallomatorFile}; validating configured labels"
 
     if ! availableLabelsOutput="$(getAvailableInstallomatorLabels)"; then
-        fatal "Failed to parse Installomator labels from ${organizationInstallomatorFile}"
+        installomatorLabels=()
+        warning "Failed to parse Installomator labels from ${organizationInstallomatorFile}; hiding Installomator labels for this run"
+        return 0
     fi
 
     availableInstallomatorLabels=("${(@f)availableLabelsOutput}")
 
     if [[ ${#availableInstallomatorLabels[@]} -eq 0 ]]; then
-        fatal "No Installomator labels were parsed from ${organizationInstallomatorFile}; verify the file format matches Installomator's label case statement"
+        installomatorLabels=()
+        warning "No Installomator labels were parsed from ${organizationInstallomatorFile}; hiding Installomator labels for this run"
+        return 0
     fi
 
     for availableLabel in "${availableInstallomatorLabels[@]}"; do
@@ -1600,46 +1614,6 @@ EOF
     return 0
 }
 
-function prepareInspectConfigForUser() {
-    if [[ -z "${dialogInspectModeJSONFile}" || ! -e "${dialogInspectModeJSONFile}" ]]; then
-        fatal "Dialog inspect config file is unavailable for user handoff."
-    fi
-
-    if [[ -z "${loggedInUser}" ]]; then
-        fatal "No logged-in user available to receive Dialog inspect config."
-    fi
-
-    if ! /usr/sbin/chown "${loggedInUser}" "${dialogInspectModeJSONFile}" 2>/dev/null; then
-        fatal "Failed to set ownership on Dialog inspect config for ${loggedInUser}."
-    fi
-
-    if ! /bin/chmod 600 "${dialogInspectModeJSONFile}" 2>/dev/null; then
-        fatal "Failed to set permissions on Dialog inspect config for ${loggedInUser}."
-    fi
-
-    info "Dialog inspect config handed off to ${loggedInUser}."
-}
-
-function prepareCompletionDialogConfigForUser() {
-    if [[ -z "${completionDialogJSONFile}" || ! -e "${completionDialogJSONFile}" ]]; then
-        fatal "Completion dialog config file is unavailable for user handoff."
-    fi
-
-    if [[ -z "${loggedInUser}" ]]; then
-        fatal "No logged-in user available to receive completion dialog config."
-    fi
-
-    if ! /usr/sbin/chown "${loggedInUser}" "${completionDialogJSONFile}" 2>/dev/null; then
-        fatal "Failed to set ownership on completion dialog config for ${loggedInUser}."
-    fi
-
-    if ! /bin/chmod 600 "${completionDialogJSONFile}" 2>/dev/null; then
-        fatal "Failed to set permissions on completion dialog config for ${loggedInUser}."
-    fi
-
-    info "Completion dialog config handed off to ${loggedInUser}."
-}
-
 ####################################################################################################
 #
 # Selection Interface Functions
@@ -1760,7 +1734,7 @@ function showNoSelectableItemsDialog() {
         messageText="All configured items are already installed, so there is nothing new to process right now."
     fi
 
-    runAsUser "${loggedInUser}" "${dialogBinary}" \
+    ${dialogBinary} \
         --title "${humanReadableScriptName}" \
         --infotext "${scriptVersion}" \
         --messagefont "size=${fontSize}" \
@@ -2166,12 +2140,10 @@ function executeSYMLiteItems() {
             fatal "Failed to create Inspect Mode configuration"
         fi
 
-        prepareInspectConfigForUser
-
         # Launch Dialog in background for real-time progress
         notice "Launching Inspect Mode dialog …"
         createDialogCommandFile
-        if ! launchAsUserInBackground "${loggedInUser}" /usr/bin/env DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --commandfile "${dialogCommandFile}" --inspect-mode; then
+        if ! launchAsUserInBackground "" /usr/bin/env DIALOG_INSPECT_CONFIG="${dialogInspectModeJSONFile}" "${dialogBinary}" --commandfile "${dialogCommandFile}" --inspect-mode; then
             fatal "Failed to launch Inspect Mode dialog"
         fi
         info "Inspect Mode PID: ${dialogPID}"
@@ -2351,8 +2323,6 @@ EOF
         fatal "Completion dialog JSON is malformed: ${jsonValidationError}"
     fi
 
-    prepareCompletionDialogConfigForUser
-
     while [[ ! -f "${completionDialogJSONFile}" || ! -r "${completionDialogJSONFile}" ]] && [[ ${retryCount} -lt ${maxRetries} ]]; do
         sleep 0.2
         ((retryCount++))
@@ -2365,7 +2335,7 @@ EOF
         fatal "Completion dialog JSON file (${unreadableCompletionDialogJSONFile}) is not readable after ${maxRetries} attempts"
     fi
 
-    runAsUser "${loggedInUser}" "${dialogBinary}" --jsonfile "${completionDialogJSONFile}" 2>/dev/null
+    "${dialogBinary}" --jsonfile "${completionDialogJSONFile}" 2>/dev/null
 
     rm -f -- "${completionDialogJSONFile}" 2>/dev/null
     completionDialogJSONFile=""

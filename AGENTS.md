@@ -19,7 +19,7 @@
 
 ## Runtime model
 - The script is designed to run as `root`. Logging, temp file creation, Installomator execution, and Jamf execution assume elevated privileges.
-- UI actions require an active logged-in GUI user. Interactive pre-flight waits up to 120 seconds for a valid console user, and `requireLoggedInUser` plus `runAsUser` gate dialog launch and restart confirmation.
+- UI actions require an active logged-in GUI user. Interactive pre-flight waits up to 120 seconds for a valid console user, and dialogs are launched by the root-owned script once a valid console user is present.
 - Item definitions live in three arrays near the top of `SYM-Lite.zsh`:
   - `installomatorLabels`
   - `jamfPolicyItems`
@@ -33,14 +33,14 @@
 ## Dependencies and external contracts
 - **swiftDialog** is required for all runs because pre-flight always calls `dialogCheck`, and it is auto-installed or updated if missing/outdated. Minimum required version is `3.0.1.4955`.
 - Because this repo requires swiftDialog 3.x, the effective minimum supported OS is **macOS 15**.
-- **Installomator** is expected at `/Library/Management/AppAutoPatch/Installomator/Installomator.sh` unless `organizationInstallomatorFile` is changed.
+- **Installomator** is expected at `/Library/Management/AppAutoPatch/Installomator/Installomator.sh` unless `organizationInstallomatorFile` is changed. If it is unavailable or unparsable, Installomator labels are filtered from the current run instead of aborting Jamf/Homebrew processing.
 - **Jamf Pro Binary** is expected at `/usr/local/bin/jamf` unless `jamfBinary` is changed.
 - **Homebrew** is detected at `/opt/homebrew/bin/brew` or `/usr/local/bin/brew` unless `brewPath` is changed. Examples and default Homebrew validation paths in this repo assume Apple silicon with Homebrew installed in `/opt/homebrew`.
 - **Network access** may be required for:
   - swiftDialog bootstrap via GitHub API and GitHub release download
   - remote icon assets used in dialogs
   - Homebrew metadata/package downloads when Homebrew items are selected
-- Inspect Mode configuration is written to a temp JSON file under `/var/tmp` and handed off to the logged-in GUI user before launch.
+- Inspect Mode configuration is written to a temp JSON file under `/var/tmp` and consumed by the root-owned dialog process at launch.
 - Logging writes to `/var/log/org.churchofjesuschrist.log` by default, and Installomator progress is read from `/var/log/Installomator.log`.
 
 ## Logging
