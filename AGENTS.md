@@ -1,6 +1,6 @@
 # SYM-Lite — Agent Instructions
 
-> **Author**: Dan K. Snelson | **Version**: 1.0.0 | **Language**: zsh (Shell) | **Platform**: macOS only | **License**: MIT
+> **Author**: Dan K. Snelson | **Language**: zsh (Shell) | **Platform**: macOS only | **License**: MIT
 
 ## Big picture
 - SYM-Lite is a macOS-only, root-run script that unifies Installomator label execution, Jamf Pro policy triggers, and approved Homebrew package installs behind a single swiftDialog-driven workflow.
@@ -62,6 +62,7 @@
 ## Editing rules
 - Always run `zsh -n` after modifying Zsh files.
 - Ask for confirmation before adding new production dependencies.
+- Keep durable repository rules near the top of this file; move fast-changing release or status details lower or keep them in canonical docs such as `CHANGELOG.md`, and avoid timestamps, counters, or ephemeral task notes in the stable prefix.
 - Preserve the current style unless there is a strong reason to refactor it:
   - lowerCamelCase variables and function names
   - `function name() {` declarations
