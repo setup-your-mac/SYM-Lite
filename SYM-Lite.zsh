@@ -16,8 +16,9 @@
 #
 # HISTORY
 #
-# Version 1.0.0, 12-Apr-2026, Dan K. Snelson (@dan-snelson)
-# - Official 1.0.0 release
+# Version 1.0.1b1, 16-Apr-2026, Dan K. Snelson (@dan-snelson)
+# - Normalize surrounding straight and smart quotes in silent-mode CSV item IDs before lookup (thanks for the heads-up, @Tim Green!)
+# - Clarify that Silent Mode Parameter 5 expects configured item identifiers, not Jamf command strings.
 #
 ####################################################################################################
 
@@ -34,7 +35,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.0.0"
+scriptVersion="1.0.1b1"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -894,6 +895,13 @@ function getAllItemIDs() {
     print -r -- "${allIDs[@]}"
 }
 
+function getAllItemIDsCSV() {
+    local allIDs=()
+
+    allIDs=($(getAllItemIDs))
+    print -r -- "${(j:,:)allIDs}"
+}
+
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -1654,6 +1662,53 @@ function prepareCompletionDialogConfigForUser() {
     info "Completion dialog config handed off to ${loggedInUser}."
 }
 
+function trimWhitespace() {
+    local value="$1"
+
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+
+    print -r -- "${value}"
+}
+
+function normalizeSilentModeItemID() {
+    local itemID="$1"
+    local leftDoubleSmartQuote=$'\u201c'
+    local rightDoubleSmartQuote=$'\u201d'
+    local leftSingleSmartQuote=$'\u2018'
+    local rightSingleSmartQuote=$'\u2019'
+    local firstChar=""
+    local lastChar=""
+    local itemLength=0
+
+    itemID="$(trimWhitespace "${itemID}")"
+    [[ -z "${itemID}" ]] && {
+        print -r -- ""
+        return 0
+    }
+
+    itemLength=${#itemID}
+    if [[ ${itemLength} -ge 2 ]]; then
+        firstChar="${itemID[1]}"
+        lastChar="${itemID[-1]}"
+
+        if [[ ( "${firstChar}" == '"' && "${lastChar}" == '"' ) \
+           || ( "${firstChar}" == "'" && "${lastChar}" == "'" ) \
+           || ( "${firstChar}" == "${leftDoubleSmartQuote}" && "${lastChar}" == "${rightDoubleSmartQuote}" ) \
+           || ( "${firstChar}" == "${leftSingleSmartQuote}" && "${lastChar}" == "${rightSingleSmartQuote}" ) ]]; then
+            if [[ ${itemLength} -eq 2 ]]; then
+                itemID=""
+            else
+                itemID="${itemID[2,$(( itemLength - 1 ))]}"
+            fi
+
+            itemID="$(trimWhitespace "${itemID}")"
+        fi
+    fi
+
+    print -r -- "${itemID}"
+}
+
 ####################################################################################################
 #
 # Selection Interface Functions
@@ -1672,9 +1727,12 @@ function parseOperationsCSV() {
     local oldIFS="$IFS"
     IFS=','
     local itemID
+    local originalItemID
+    local unknownItemMessage=""
     for itemID in ${csv}; do
-        itemID="${itemID// /}"                    # Strip whitespace
-        [[ -z "${itemID}" ]] && continue          # Skip empty entries
+        originalItemID="${itemID}"
+        itemID="$(normalizeSilentModeItemID "${itemID}")"
+        [[ -z "${itemID}" ]] && continue
         
         # Validate item exists
         local itemType
@@ -1694,7 +1752,12 @@ function parseOperationsCSV() {
             elif isConfiguredHomebrewItem "${itemID}"; then
                 warning "Skipping CSV item '${itemID}': Homebrew item is unavailable in this run"
             else
-                warning "Unknown item ID in CSV: '${itemID}'"
+                if [[ "${itemID}" != "${originalItemID}" ]]; then
+                    unknownItemMessage="Unknown item ID in CSV: '${originalItemID}' normalized to '${itemID}'. Item IDs must match configured identifiers exactly; remove extra quotes or formatting characters."
+                else
+                    unknownItemMessage="Unknown item ID in CSV: '${itemID}'. Item IDs must match configured identifiers exactly; remove extra quotes or formatting characters."
+                fi
+                warning "${unknownItemMessage}"
             fi
         fi
     done
@@ -1797,6 +1860,7 @@ function showSelectionDialog() {
     if [[ "${operationMode}" == "silent" ]]; then
         parseOperationsCSV "${operationsCSV}"
         if [[ ${#selectedItems[@]} -eq 0 ]]; then
+            warning "Valid item IDs for this run: $(getAllItemIDsCSV)"
             errorOut "Silent mode: no valid operations selected from operationsCSV"
             return 1
         fi
