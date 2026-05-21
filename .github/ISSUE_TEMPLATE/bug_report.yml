@@ -46,7 +46,7 @@ body:
     attributes:
       label: SYM-Lite version tested
       description: Which version or commit did you run?
-      placeholder: "e.g. 1.0.1b1 or main @ abc1234"
+      placeholder: "e.g. 1.0.1b2 or main @ abc1234"
     validations:
       required: true
 

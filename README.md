@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite) [![swiftDialog](https://img.shields.io/badge/swiftDialog-Enabled-blue)](https://swiftdialog.app) [![Semgrep Security Scan](https://img.shields.io/badge/security%20scanned%20by-Semgrep-00C7B7?style=flat&logo=semgrep&logoColor=white)](https://semgrep.dev)
 
-# SYM-Lite (1.0.1b1)
+# SYM-Lite (1.0.1b2)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) and [Homebrew](https://brew.sh) casks / formulas, as well as Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies), all through a unified [swiftDialog](https://swiftdialog.app) selection and reporting interface.
 
