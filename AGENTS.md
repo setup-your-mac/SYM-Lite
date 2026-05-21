@@ -1,107 +1,179 @@
-# SYM-Lite — Agent Instructions
+# AGENTS.md
 
-> **Author**: Dan K. Snelson | **Language**: zsh (Shell) | **Platform**: macOS only | **License**: MIT
+**Single source of truth for coding agents** (`Codex`, Claude Code, Cursor, Copilot, Aider, etc.).  
+Takes precedence over `README.md`, `.github/copilot-instructions.md`, and similar instruction files.
 
-## Big picture
-- SYM-Lite is a macOS-only, root-run script that unifies Installomator label execution, Jamf Pro policy triggers, and approved Homebrew package installs behind a single swiftDialog-driven workflow.
-- The repo is intentionally small. `SYM-Lite.zsh` contains the runtime logic, UI flow, logging, pre-flight checks, and execution engine. There is no build pipeline or assembled artifact layer in this repo.
-- Default behavior is interactive: show a checkbox selection dialog, launch swiftDialog Inspect Mode, execute selected items sequentially, then show completion and optional restart prompts.
-- Silent behavior is also supported through Jamf-style parameters: Parameter 4 sets `interactive` or `silent`, and Parameter 5 provides a comma-separated item ID list.
-- This project does not manage enrollment, collect device metadata, or orchestrate arbitrary package workflows outside Jamf custom triggers, Installomator labels, and explicitly configured Homebrew packages.
+## Orchestration Contract
+This file codifies project rules, boundaries, workflows, and repeatable skills. If same correction repeats, formalize it here instead of re-prompting it.
 
-## Core components
-1. **`SYM-Lite.zsh`** (CORE) — Single entrypoint and source of truth. Handles logging, pre-flight validation, selection parsing, Inspect Mode JSON generation, Installomator execution, Jamf execution, Homebrew execution, completion dialogs, and restart flow.
-2. **`README.md`** (DOCS) — Operator-facing usage and behavior guide. Keep it aligned with user-visible workflow or configuration changes.
-3. **`CHANGELOG.md`** (HISTORY) — Running history of all released versions. This is the canonical long-term change record for the repo.
-4. **`SECURITY.md`** (SECURITY) — Security policy, supported-version statement, and private vulnerability reporting instructions.
-5. **`.github/workflows/security-scan.yml`** (AUTOMATION) — Repository security scanning workflow for Semgrep, Gitleaks, `zsh -n`, and ShellCheck.
-6. **`.gitignore`** (HYGIENE) — Minimal macOS and zsh ignore rules. Do not expand it casually.
+## Project Overview
+`SYM-Lite` is macOS-only, root-run zsh workflow for executing approved software and management actions through one swiftDialog-driven experience. Primary artifact: `SYM-Lite.zsh`. Supported operation modes: **interactive** (default) and **silent**. Scope limited to Installomator labels, Jamf policy triggers, and approved Homebrew items.
 
-## Runtime model
-- The script is designed to run as `root`. Logging, temp file creation, Installomator execution, and Jamf execution assume elevated privileges.
-- UI actions require an active logged-in GUI user. Interactive pre-flight waits up to 120 seconds for a valid console user, and some dialog flows hand temporary config files to the logged-in user before launch.
-- Item definitions live in three arrays near the top of `SYM-Lite.zsh`:
-  - `installomatorLabels`
-  - `jamfPolicyItems`
-  - `homebrewItems`
-- Each item is defined as:
-  - `"identifier | displayName | validationPath | iconURL"`
-- `validationPath` is operationally important, not cosmetic. It drives pre-execution skip logic and Inspect Mode completion detection. For Homebrew items, examples and default validation paths in this repo assume Apple silicon with Homebrew installed in `/opt/homebrew`.
-- The script processes selected items sequentially. There is no parallel execution layer.
-- Homebrew items run in the logged-in user context even though the script itself runs as `root`.
+## Key Commands
+- Validate syntax after every Zsh edit: `zsh -n SYM-Lite.zsh`
+- Inspect current script version: `rg -n '^scriptVersion=' SYM-Lite.zsh`
+- Inspect current item inventories: `rg -n '^(installomatorLabels|jamfPolicyItems|homebrewItems)=\\(' SYM-Lite.zsh`
+- Review canonical runtime docs before behavior edits: `sed -n '1,240p' AGENTS.md`
 
-## Dependencies and external contracts
-- **swiftDialog** is required for all runs because pre-flight always calls `dialogCheck`, and it is auto-installed or updated if missing/outdated. Minimum required version is `3.0.1.4955`.
-- Because this repo requires swiftDialog 3.x, the effective minimum supported OS is **macOS 15**.
-- **Installomator** is expected at `/Library/Management/AppAutoPatch/Installomator/Installomator.sh` unless `organizationInstallomatorFile` is changed. If it is unavailable or unparsable, Installomator labels are filtered from the current run instead of aborting Jamf/Homebrew processing.
-- **Jamf Pro Binary** is expected at `/usr/local/bin/jamf` unless `jamfBinary` is changed.
-- **Homebrew** is detected at `/opt/homebrew/bin/brew` or `/usr/local/bin/brew` unless `brewPath` is changed. Examples and default Homebrew validation paths in this repo assume Apple silicon with Homebrew installed in `/opt/homebrew`.
-- **Network access** may be required for:
-  - swiftDialog bootstrap via GitHub API and GitHub release download
-  - remote icon assets used in dialogs
-  - Homebrew metadata/package downloads when Homebrew items are selected
-- Inspect Mode configuration is written to a temp JSON file under `/var/tmp` and handed off to the logged-in GUI user before launch.
-- Logging writes to `/var/log/org.churchofjesuschrist.log` by default, and Installomator progress is read from `/var/log/Installomator.log`.
+## Agent Workflow
+- Confirm this file is loaded before starting session.
+- Default user-facing communication mode: `$caveman full`, except for security warnings, irreversible actions, or clear user confusion.
+- Treat context like scalpel, not net; provide only files, lines, and examples needed.
+- Use surgical edits; reference exact functions, arrays, or config blocks instead of pasting large sections.
+- After any edit to `SYM-Lite.zsh`, run `zsh -n` immediately.
+- For behavior changes, inspect affected paths end-to-end: pre-flight, selection parsing, execution, completion, restart.
+- Keep interactive and silent behavior distinct; do not let GUI-only assumptions leak into silent flow.
+- Use codified skills when they fit instead of re-describing workflow.
+- Prefer batching related work into one well-scoped change.
 
-## Logging
-- Log format is:
-  - `${organizationScriptName} (${scriptVersion}): YYYY-MM-DD HH:MM:SS  [LEVEL] message`
-- Active levels include:
-  - `[PRE-FLIGHT]`
-  - `[NOTICE]`
-  - `[INFO]`
-  - `[WARNING]`
-  - `[ERROR]`
-  - `[FATAL ERROR]`
-- Installomator, Jamf, and Homebrew `stdout` are piped back into the main script log via `logComment`.
-- When adding or changing workflow branches, prefer:
-  - `NOTICE` for phase transitions and important actions
-  - `WARNING` for degraded-but-continuable states
-  - `ERROR` or `FATAL ERROR` for failed execution paths
+## Skills
+Invoke relevant skill name during planning.
 
-## Editing rules
+### Add New Executable Item Skill
+1. Start from matching array format in `installomatorLabels`, `jamfPolicyItems`, or `homebrewItems`.
+2. Keep item list sorted by display-name intent because UI merges and sorts groups together.
+3. Set real `validationPath`; skip logic and Inspect Mode completion depend on it.
+4. Validate affected parsing and execution flow in `SYM-Lite.zsh`.
+5. Update `README.md` if user-visible configuration or behavior changed.
+
+### Runtime Flow Change Skill
+1. Identify all touched functions with `rg`.
+2. Make minimal surgical edits only.
+3. Run `zsh -n SYM-Lite.zsh` immediately after edit.
+4. Re-check pre-flight, selection, execution, and completion branches affected by change.
+5. Update docs when runtime assumptions or operator workflow changed.
+
+### Release Prep Skill
+1. Keep `scriptVersion`, `CHANGELOG.md`, and released behavior aligned.
+2. Update only files explicitly in scope.
+3. Re-check syntax and release-facing docs.
+4. Keep `SYM-Lite.zsh` `HISTORY` section limited to current in-development version only.
+
+## Boundaries
+**Always allowed without asking**
+- Read any repository file.
+- Run `zsh -n SYM-Lite.zsh`.
+- Make small targeted doc or script edits that follow rules below.
+- Inspect arrays, functions, and logs referenced in code without executing live install workflows.
+
+**Ask before doing**
+- Add new production dependencies.
+- Run commands that can install software, trigger Jamf policies, update Homebrew metadata, or otherwise mutate host state outside repo.
+- Change default operation mode, parameter semantics, logging contract, or restart behavior.
+- Rebuild release notes or prepare release versioning not explicitly requested.
+
+**Never do**
+- Hardcode secrets, tokens, org-private endpoints, or credentials.
+- Modify files outside current task scope without approval.
+- Add arbitrary package workflows beyond Jamf triggers, Installomator labels, or explicitly configured Homebrew packages.
+- Break macOS-only or root-run assumptions by accident.
+
+## Source of Truth
+When files disagree, prefer:
+1. `SYM-Lite.zsh` for implemented behavior, defaults, dependencies, and runtime flow.
+2. `AGENTS.md` for agent workflow, boundaries, and validation expectations.
+3. `README.md`, `CHANGELOG.md`, and `SECURITY.md` for current operator and release documentation.
+4. `.github/copilot-instructions.md` for supplemental agent guidance when consistent with this file.
+
+## Mission and Scope
+Mission: give operators one lean swiftDialog workflow to run approved developer setup and management actions on macOS with clear progress, logging, and completion status.
+
+In scope:
+- swiftDialog-driven selection and Inspect Mode execution UX
+- Installomator label execution
+- Jamf policy trigger execution
+- approved Homebrew formula and cask execution
+- path-based validation, logging, completion reporting, and restart prompts
+
+Out of scope:
+- non-macOS support
+- non-root execution as primary runtime model
+- enrollment, inventory collection strategy, or broad device orchestration
+- arbitrary package pipelines outside configured Jamf, Installomator, and Homebrew items
+
+## Implementation Priorities
+1. Preserve single-script architecture in `SYM-Lite.zsh`.
+2. Keep interactive workflow reliable for logged-in GUI users.
+3. Keep silent workflow automation-friendly and non-blocking.
+4. Favor safe incremental changes over broad refactors.
+5. Keep docs aligned with user-visible behavior and environment assumptions.
+
+## Key Files
+- `SYM-Lite.zsh`: single entrypoint; runtime parameters, arrays, pre-flight, selection UI, Inspect Mode, execution engine, completion and restart flow
+- `README.md`: operator-facing usage, configuration, and behavior guide
+- `CHANGELOG.md`: canonical long-term release history
+- `SECURITY.md`: security policy and reporting process
+- `.github/workflows/security-scan.yml`: Semgrep, Gitleaks, `zsh -n`, and ShellCheck automation
+- `.github/copilot-instructions.md`: secondary agent instructions; do not let it override this file
+
+## Current Runtime Hotspots
+- `dialogCheck()` always runs in pre-flight and can auto-install or update swiftDialog from GitHub; blocked network breaks bootstrap.
+- Installomator availability is optional for each run; missing or unparsable Installomator filters those labels instead of aborting Jamf or Homebrew execution.
+- `validationPath` drives both pre-execution skip logic and Inspect Mode completion detection; wrong path can suppress needed work or hide completion.
+- Interactive mode needs active logged-in GUI user and exits after wait window if none appears.
+- Homebrew execution runs in logged-in user context even though script itself runs as root.
+- Jamf and Homebrew completion remain path-based, not rich progress parsed.
+
+## Repository Rules
 - Always run `zsh -n` after modifying Zsh files.
-- Ask for confirmation before adding new production dependencies.
-- Keep durable repository rules near the top of this file; move fast-changing release or status details lower or keep them in canonical docs such as `CHANGELOG.md`, and avoid timestamps, counters, or ephemeral task notes in the stable prefix.
-- Preserve the current style unless there is a strong reason to refactor it:
-  - lowerCamelCase variables and function names
-  - `function name() {` declarations
-  - braced variable expansion as the default style
-  - large hash-wall section separators and generous spacing between top-level blocks
-- Keep `installomatorLabels`, `jamfPolicyItems`, and `homebrewItems` sorted by display name intent, because the UI merges and sorts all groups together for presentation.
-- If you change user-visible behavior, configuration semantics, or required environment assumptions, update `README.md` in the same pass.
-- `CHANGELOG.md` is the running history for all versions. Add each released version there.
-- The `HISTORY` section in `SYM-Lite.zsh` should only describe changes for the current version under development, not retain the full historical archive.
+- Do not add new production dependencies without explicit approval.
+- Keep durable repo rules near top of this file; avoid timestamps, counters, or ephemeral task notes in stable sections.
+- Preserve existing script style unless strong reason exists to refactor.
+- Keep `installomatorLabels`, `jamfPolicyItems`, and `homebrewItems` sorted by display-name intent.
+- If behavior, configuration semantics, or environment assumptions change, update `README.md` in same pass.
+- `CHANGELOG.md` is long-term history for released versions.
+- `SYM-Lite.zsh` `HISTORY` section should describe current version under development only.
+- Check `git status` before editing shared docs so unrelated local work is not overwritten.
 
-## Known risks and technical debt
-- `dialogInstall()` depends on GitHub API/release availability and Apple package signing validation. Blocked network access breaks automatic swiftDialog bootstrap.
-- Inspect Mode uses the swiftDialog `"preset": "installomator"` log monitor behavior, which is convenient but not something this repo controls.
-- Jamf policies do not have rich progress parsing. They are effectively binary from the UI perspective unless validation paths appear.
-- Homebrew items also do not have rich Inspect Mode parsing. They are path-based from the UI perspective and depend on `brew` being available to a logged-in user.
-- Jamf success with a missing `validationPath` is logged as a warning but still treated as completed.
-- Homebrew success with a missing `validationPath` is logged as a warning and treated as needing review.
-- Skip logic is entirely path-based. A stale file path can suppress needed execution.
-- Interactive flows can fail on headless systems or at the login window; after 120 seconds without a valid GUI user, the script exits. Silent mode is the safer path when no user session is available.
+## Scripting Style
+Match established `SYM-Lite.zsh` style unless user explicitly asks otherwise.
 
-## Key decisions
+1. Preserve sectioned structure and hash-wall separators.
+2. Keep lowerCamelCase variables and functions.
+3. Keep `function name() { ... }` declarations.
+4. Prefer braced variable expansion and explicit quoting.
+5. Route operational logging through `preFlight`, `logComment`, `notice`, `info`, `warning`, `errorOut`, and `fatal`.
+6. Keep helper flow explicit; avoid hiding critical branching inside dense one-liners.
+7. Preserve array item formats exactly:
+   - Installomator: `"label | Display Name | Validation Path | Icon URL"`
+   - Jamf: `"trigger | Display Name | Validation Path | Icon URL"`
+   - Homebrew: `"formula:token"` or `"cask:token"` item id with same four-field layout
+8. Keep silent-mode parsing tolerant of operator input normalization when touching CSV or item ID logic.
+9. Prefer degraded-but-continuable warnings over fatal exits unless workflow truly cannot proceed.
+10. Keep user-facing strings concise and operator-friendly.
 
-| Decision | Rationale |
-|----------|-----------|
-| Single-script architecture | Keeps deployment simple and avoids a build/assembly step |
-| Sequential execution | Easier logging, UI tracking, and failure isolation |
-| Unified selection UI for Jamf + Installomator + Homebrew items | Presents one operator-facing workflow instead of separate tools |
-| Path-based validation and skip logic | Simple and observable, even if imperfect |
-| Interactive mode owns completion and restart dialogs | Silent mode remains automation-friendly and non-blocking |
-| Auto-install/update swiftDialog | Reduces operator setup friction on managed Macs |
+## Dependency and Platform Expectations
+- Platform is macOS only.
+- Script is designed to run as `root`.
+- Effective minimum OS support is macOS 15 because repo requires swiftDialog 3.x.
+- Minimum swiftDialog version is `3.0.1.4955`.
+- Default Installomator path: `/Library/Management/AppAutoPatch/Installomator/Installomator.sh`
+- Default Jamf binary path: `/usr/local/bin/jamf`
+- Homebrew detection prefers `/opt/homebrew/bin/brew`, then `/usr/local/bin/brew`
+- Default logging paths: `/var/log/org.churchofjesuschrist.log` and `/var/log/Installomator.log`
 
-## Navigation
-- Top of `SYM-Lite.zsh`: metadata, globals, runtime parameters, dependency paths, and item arrays.
-- Early helper section: logging, cleanup, logged-in user detection, parsing helpers.
-- Middle sections: swiftDialog bootstrap, pre-flight checks, Inspect Mode JSON generation, and selection parsing.
-- Late sections: execution functions, interruption handling, completion dialog, restart flow, and main program.
-- When debugging behavior, inspect in this order:
-  1. Pre-flight logs
-  2. Item parsing and selection state
-  3. Validation paths
-  4. Installomator, Jamf, or Homebrew command output relayed into `scriptLog`
-  5. Inspect Mode JSON generation, user handoff, and dialog launch conditions
+## Quality Bar
+- Keep pre-flight behavior reliable across missing GUI user, missing swiftDialog, missing Installomator, missing Jamf, and missing Homebrew cases.
+- Keep interactive UX valid: selection dialog, Inspect Mode JSON, command file, completion dialog, restart prompt.
+- Keep silent mode deterministic: parameter parsing, item lookup, skip logic, and completion reporting must stay clear.
+- Logging must remain structured and useful for operators.
+- Temporary file creation and cleanup must stay safe and bounded to expected temp locations.
+
+## Required Validation
+1. Run `zsh -n` on every modified Zsh script.
+2. For script changes, review touched paths for obvious regressions in both `interactive` and `silent` flows.
+3. For docs-only changes, review Markdown rendering, terminology, and cross-file consistency.
+4. Update `README.md` when behavior, configuration, environment assumptions, or operator workflow changes.
+5. Update `CHANGELOG.md` only for released-version history or when task explicitly includes release-note work.
+6. Do not add new production dependencies without explicit approval.
+
+## Release Checklist
+Apply only for release prep.
+1. Keep `scriptVersion`, top `CHANGELOG.md` entry, and shipped behavior aligned.
+2. Ensure `README.md` matches current operation modes, dependencies, and item configuration semantics.
+3. Confirm `SYM-Lite.zsh` `HISTORY` section reflects current in-development version only.
+4. Verify security workflow and docs still reference current repository realities.
+5. Remove or clarify stale version references when they would mislead contributors.
+
+## Maintenance
+This file is versioned with project. When core style rules, validation requirements, workflow boundaries, or agent expectations change, update `AGENTS.md`. Keep file concise enough for agent attention and specific enough to prevent repeated corrective prompting.
