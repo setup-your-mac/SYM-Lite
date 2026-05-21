@@ -1,0 +1,180 @@
+name: Bug Report
+description: Something looks broken in SYM-Lite
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for filing bug report for SYM-Lite.
+
+        Please fill this out with enough detail to reproduce issue.
+
+        Before filing, retest with latest `main` branch version of `SYM-Lite.zsh` unless maintainer asked for different build:
+
+        ```zsh
+        timestamp=$( date '+%Y-%m-%d-%H%M%S' )
+        curl -L -o ~/Downloads/SYM-Lite-$timestamp.zsh https://raw.githubusercontent.com/Setup-Your-Mac/SYM-Lite/main/SYM-Lite.zsh
+        sudo zsh ~/Downloads/SYM-Lite-$timestamp.zsh
+        ```
+
+        If problem looks upstream, also review open swiftDialog and Installomator issues first.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before you submit
+      options:
+        - label: I reproduced this with latest `main` branch version available to me, or I explain below why I could not.
+          required: true
+        - label: I reviewed open swiftDialog issues when this looks related to dialog rendering, Inspect Mode, or button behavior.
+          required: true
+        - label: I reviewed open Installomator issues when this looks related to label execution or Installomator output.
+          required: true
+
+  - type: input
+    id: installed-macos-version
+    attributes:
+      label: Installed macOS version
+      description: From About This Mac or `sw_vers -productVersion`
+      placeholder: "e.g. 15.5"
+    validations:
+      required: true
+
+  - type: input
+    id: script-version
+    attributes:
+      label: SYM-Lite version tested
+      description: Which version or commit did you run?
+      placeholder: "e.g. 1.0.1b1 or main @ abc1234"
+    validations:
+      required: true
+
+  - type: input
+    id: swiftdialog-version
+    attributes:
+      label: swiftDialog version
+      description: From `dialog --version`
+      placeholder: "e.g. 3.0.1.4955"
+    validations:
+      required: true
+
+  - type: input
+    id: installomator-version
+    attributes:
+      label: Installomator version, if relevant
+      description: From your active `Installomator.sh` or local deployment notes
+      placeholder: "e.g. 10.8"
+
+  - type: input
+    id: jamf-version
+    attributes:
+      label: Jamf binary version, if relevant
+      description: From `jamf version`
+      placeholder: "e.g. 11.18.0"
+
+  - type: input
+    id: brew-version
+    attributes:
+      label: Homebrew version, if relevant
+      description: From `brew --version`
+      placeholder: "e.g. Homebrew 4.4.31"
+
+  - type: dropdown
+    id: execution-path
+    attributes:
+      label: How was SYM-Lite launched?
+      options:
+        - Terminal
+        - Jamf Pro policy
+        - Self Service
+        - Other MDM workflow
+        - More than one path
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operation-mode
+    attributes:
+      label: Operation mode
+      description: Which mode exposed issue?
+      options:
+        - Interactive
+        - Silent
+        - Both
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Which area looks broken?
+      options:
+        - Selection dialog or installed-state labels
+        - Inspect Mode progress or cache monitoring
+        - Silent mode parsing or `operationsCSV`
+        - Installomator label validation or execution
+        - Homebrew item validation or execution
+        - Jamf policy validation or execution
+        - Pre-flight or dependency bootstrap
+        - Completion report or restart prompt
+        - Logging or completion detection
+        - Documentation or examples
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe actual behavior.
+      placeholder: |
+        Example: Interactive picker launched, but silent-mode-style CSV validation rejected selected Homebrew item and completion report never appeared.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: What did you expect to happen?
+      placeholder: |
+        Example: Picker should accept selection, run item, then show completion report with correct status.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps help.
+      placeholder: |
+        1. Launch SYM-Lite with current parameters
+        2. Note whether run is `interactive` or `silent`
+        3. Include selected item IDs or exact `operationsCSV` used
+        4. List local edits made to `SYM-Lite.zsh`
+        5. Observe unexpected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic artifacts
+      description: Drag in sanitized logs, screenshots, Terminal output, or other proof.
+      placeholder: |
+        Helpful artifacts:
+        - Full command, Jamf parameters, or policy trigger used
+        - Relevant excerpts from `/var/log/org.churchofjesuschrist.log`
+        - Relevant excerpts from `/var/log/Installomator.log`
+        - `zsh -x` output, if captured
+        - Screenshots of swiftDialog selection, Inspect Mode, or completion dialogs
+        - Values for item ID, `validationPath`, or local array entry changed
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Anything else
+      description: Add environment notes, workarounds, or dependency context that does not fit above.

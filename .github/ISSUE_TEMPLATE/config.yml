@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: SYM-Lite README
+    url: https://github.com/Setup-Your-Mac/SYM-Lite/blob/main/README.md
+    about: Review usage, configuration, operation-mode, and dependency guidance before filing.
+  - name: swiftDialog upstream issues
+    url: https://github.com/swiftDialog/swiftDialog/issues
+    about: File dialog-engine issues that are outside SYM-Lite itself.
+  - name: Installomator upstream issues
+    url: https://github.com/Installomator/Installomator/issues
+    about: File Installomator-specific label or installer issues upstream when appropriate.
