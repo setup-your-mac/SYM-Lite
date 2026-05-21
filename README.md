@@ -183,7 +183,7 @@ Parameter 5 must contain item identifiers exactly as they are defined in the con
 sudo /path/to/SYM-Lite.zsh "" "" "" silent "androidstudio,appleXcode,cask:codex"
 ```
 
-Surrounding straight quotes and common smart quotes copied from rich-text sources are normalized in silent mode, but plain comma-separated item IDs are still the recommended input format.
+Silent mode also normalizes surrounding straight quotes and common smart quotes copied from rich-text sources, including when the entire CSV is wrapped once or when individual item IDs are quoted. Plain comma-separated item IDs are still the recommended input format.
 
 If SYM-Lite reports an unknown item ID, compare Parameter 5 against the identifiers configured near the top of [SYM-Lite.zsh](SYM-Lite.zsh). For the current repo state, `googleChrome` is not a configured item ID, so silent mode will reject it until it is added to the appropriate item array.
 

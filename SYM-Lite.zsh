@@ -16,9 +16,10 @@
 #
 # HISTORY
 #
-# Version 1.0.1b1, 16-Apr-2026, Dan K. Snelson (@dan-snelson)
-# - Normalize surrounding straight and smart quotes in silent-mode CSV item IDs before lookup (thanks for the heads-up, @Tim Green!)
+# Version 1.0.1b2, 21-Apr-2026, Dan K. Snelson (@dan-snelson)
+# - Normalize surrounding straight and smart quotes in silent-mode CSV item IDs before lookup (thanks for the heads-up, @applegurutim!)
 # - Clarify that Silent Mode Parameter 5 expects configured item identifiers, not Jamf command strings.
+# - Fix silent-mode Parameter 5 parsing when Jamf passes multiple comma-separated item IDs wrapped in one quoted CSV string (thanks for another heads-up, @applegurutim!)
 #
 ####################################################################################################
 
@@ -35,7 +36,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.0.1b1"
+scriptVersion="1.0.1b2"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -1709,6 +1710,43 @@ function normalizeSilentModeItemID() {
     print -r -- "${itemID}"
 }
 
+function normalizeSilentModeCSV() {
+    local csv="$1"
+    local leftDoubleSmartQuote=$'\u201c'
+    local rightDoubleSmartQuote=$'\u201d'
+    local leftSingleSmartQuote=$'\u2018'
+    local rightSingleSmartQuote=$'\u2019'
+    local firstChar=""
+    local lastChar=""
+    local csvLength=0
+    local innerCSV=""
+
+    csv="$(trimWhitespace "${csv}")"
+    [[ -z "${csv}" ]] && {
+        print -r -- ""
+        return 0
+    }
+
+    csvLength=${#csv}
+    if [[ ${csvLength} -ge 2 ]]; then
+        firstChar="${csv[1]}"
+        lastChar="${csv[-1]}"
+
+        if [[ ( "${firstChar}" == '"' && "${lastChar}" == '"' ) \
+           || ( "${firstChar}" == "'" && "${lastChar}" == "'" ) \
+           || ( "${firstChar}" == "${leftDoubleSmartQuote}" && "${lastChar}" == "${rightDoubleSmartQuote}" ) \
+           || ( "${firstChar}" == "${leftSingleSmartQuote}" && "${lastChar}" == "${rightSingleSmartQuote}" ) ]]; then
+            innerCSV="${csv[2,$(( csvLength - 1 ))]}"
+
+            if [[ "${innerCSV}" != *"${firstChar}"* && "${innerCSV}" != *"${lastChar}"* ]]; then
+                csv="$(trimWhitespace "${innerCSV}")"
+            fi
+        fi
+    fi
+
+    print -r -- "${csv}"
+}
+
 ####################################################################################################
 #
 # Selection Interface Functions
@@ -1724,12 +1762,13 @@ function parseOperationsCSV() {
     selectedItems=()
     [[ -z "${csv}" ]] && return 0
 
-    local oldIFS="$IFS"
-    IFS=','
+    csv="$(normalizeSilentModeCSV "${csv}")"
+    [[ -z "${csv}" ]] && return 0
+
     local itemID
     local originalItemID
     local unknownItemMessage=""
-    for itemID in ${csv}; do
+    for itemID in ${(s:,:)csv}; do
         originalItemID="${itemID}"
         itemID="$(normalizeSilentModeItemID "${itemID}")"
         [[ -z "${itemID}" ]] && continue
@@ -1761,8 +1800,7 @@ function parseOperationsCSV() {
             fi
         fi
     done
-    IFS="${oldIFS}"
-    
+
     info "Parsed CSV: ${#selectedItems[@]} valid items selected"
 }
 
