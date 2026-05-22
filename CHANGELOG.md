@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## 1.0.1b2 - 21-Apr-2026
+## 1.0.1b3 - 22-May-2026
 - Normalize surrounding straight and smart quotes in silent-mode CSV item IDs before lookup (thanks for the heads-up, @applegurutim!)
 - Clarify that Silent Mode Parameter 5 expects configured item identifiers, not Jamf command strings.
 - Fix silent-mode Parameter 5 parsing when Jamf passes multiple comma-separated item IDs wrapped in one quoted CSV string (thanks for another heads-up, @applegurutim!)
