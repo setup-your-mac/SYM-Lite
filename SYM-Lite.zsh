@@ -16,9 +16,10 @@
 #
 # HISTORY
 #
-# Version 1.0.1b1, 16-Apr-2026, Dan K. Snelson (@dan-snelson)
-# - Normalize surrounding straight and smart quotes in silent-mode CSV item IDs before lookup (thanks for the heads-up, @Tim Green!)
+# Version 1.0.1b3, 22-May-2026, Dan K. Snelson (@dan-snelson)
+# - Normalize surrounding straight and smart quotes in silent-mode CSV item IDs before lookup (thanks for the heads-up, @applegurutim!)
 # - Clarify that Silent Mode Parameter 5 expects configured item identifiers, not Jamf command strings.
+# - Fix silent-mode Parameter 5 parsing when Jamf passes multiple comma-separated item IDs wrapped in one quoted CSV string (thanks for another heads-up, @applegurutim!)
 #
 ####################################################################################################
 
@@ -35,7 +36,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.0.1b1"
+scriptVersion="1.0.1b3"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -1671,15 +1672,49 @@ function trimWhitespace() {
     print -r -- "${value}"
 }
 
+function trimSilentModeOuterQuotes() {
+    local value="$1"
+    local preserveNestedQuotes="${2:-false}"
+    local quotePair=""
+    local leftQuote=""
+    local rightQuote=""
+    local innerValue=""
+    local -a quotePairs=(
+        "\"|\""
+        "'|'"
+        $'\342\200\234|\342\200\235'
+        $'\342\200\230|\342\200\231'
+    )
+
+    value="$(trimWhitespace "${value}")"
+    [[ -z "${value}" ]] && {
+        print -r -- ""
+        return 0
+    }
+
+    for quotePair in "${quotePairs[@]}"; do
+        leftQuote="${quotePair%%|*}"
+        rightQuote="${quotePair#*|}"
+
+        if [[ "${value}" == "${leftQuote}"*"${rightQuote}" ]]; then
+            innerValue="${value#${leftQuote}}"
+            innerValue="${innerValue%${rightQuote}}"
+
+            if [[ "${preserveNestedQuotes:l}" == "true" ]] \
+            && [[ "${innerValue}" == *"${leftQuote}"* || "${innerValue}" == *"${rightQuote}"* ]]; then
+                continue
+            fi
+
+            value="$(trimWhitespace "${innerValue}")"
+            break
+        fi
+    done
+
+    print -r -- "${value}"
+}
+
 function normalizeSilentModeItemID() {
     local itemID="$1"
-    local leftDoubleSmartQuote=$'\u201c'
-    local rightDoubleSmartQuote=$'\u201d'
-    local leftSingleSmartQuote=$'\u2018'
-    local rightSingleSmartQuote=$'\u2019'
-    local firstChar=""
-    local lastChar=""
-    local itemLength=0
 
     itemID="$(trimWhitespace "${itemID}")"
     [[ -z "${itemID}" ]] && {
@@ -1687,26 +1722,23 @@ function normalizeSilentModeItemID() {
         return 0
     }
 
-    itemLength=${#itemID}
-    if [[ ${itemLength} -ge 2 ]]; then
-        firstChar="${itemID[1]}"
-        lastChar="${itemID[-1]}"
-
-        if [[ ( "${firstChar}" == '"' && "${lastChar}" == '"' ) \
-           || ( "${firstChar}" == "'" && "${lastChar}" == "'" ) \
-           || ( "${firstChar}" == "${leftDoubleSmartQuote}" && "${lastChar}" == "${rightDoubleSmartQuote}" ) \
-           || ( "${firstChar}" == "${leftSingleSmartQuote}" && "${lastChar}" == "${rightSingleSmartQuote}" ) ]]; then
-            if [[ ${itemLength} -eq 2 ]]; then
-                itemID=""
-            else
-                itemID="${itemID[2,$(( itemLength - 1 ))]}"
-            fi
-
-            itemID="$(trimWhitespace "${itemID}")"
-        fi
-    fi
+    itemID="$(trimSilentModeOuterQuotes "${itemID}")"
 
     print -r -- "${itemID}"
+}
+
+function normalizeSilentModeCSV() {
+    local csv="$1"
+
+    csv="$(trimWhitespace "${csv}")"
+    [[ -z "${csv}" ]] && {
+        print -r -- ""
+        return 0
+    }
+
+    csv="$(trimSilentModeOuterQuotes "${csv}" "true")"
+
+    print -r -- "${csv}"
 }
 
 ####################################################################################################
@@ -1724,12 +1756,13 @@ function parseOperationsCSV() {
     selectedItems=()
     [[ -z "${csv}" ]] && return 0
 
-    local oldIFS="$IFS"
-    IFS=','
+    csv="$(normalizeSilentModeCSV "${csv}")"
+    [[ -z "${csv}" ]] && return 0
+
     local itemID
     local originalItemID
     local unknownItemMessage=""
-    for itemID in ${csv}; do
+    for itemID in ${(s:,:)csv}; do
         originalItemID="${itemID}"
         itemID="$(normalizeSilentModeItemID "${itemID}")"
         [[ -z "${itemID}" ]] && continue
@@ -1761,8 +1794,7 @@ function parseOperationsCSV() {
             fi
         fi
     done
-    IFS="${oldIFS}"
-    
+
     info "Parsed CSV: ${#selectedItems[@]} valid items selected"
 }
 
