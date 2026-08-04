@@ -16,7 +16,7 @@
 #
 # HISTORY
 #
-# Version 1.1.0b1, 13-Jul-2026, Dan K. Snelson (@dan-snelson)
+# Version 1.1.0, 04-Aug-2026, Dan K. Snelson (@dan-snelson)
 # - Normalize surrounding straight and smart quotes in silent-mode CSV item IDs before lookup (thanks for the heads-up, @applegurutim!)
 # - Clarify that Silent Mode Parameter 5 expects configured item identifiers, not Jamf command strings.
 # - Fix silent-mode Parameter 5 parsing when Jamf passes multiple comma-separated item IDs wrapped in one quoted CSV string (thanks for another heads-up, @applegurutim!)
@@ -37,7 +37,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.1.0b1"
+scriptVersion="1.1.0"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -55,7 +55,7 @@ installomatorLog="/var/log/Installomator.log"
 SECONDS="0"
 
 # Minimum Required Version of swiftDialog
-swiftDialogMinimumRequiredVersion="3.0.1.4955"
+swiftDialogMinimumRequiredVersion="3.1.0.4994"
 
 # Load is-at-least for version comparison
 autoload -Uz is-at-least
