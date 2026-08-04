@@ -146,8 +146,8 @@ Match established `SYM-Lite.zsh` style unless user explicitly asks otherwise.
 - Platform is macOS only.
 - Script is designed to run as `root`.
 - Effective minimum OS support is macOS 15 because repo requires swiftDialog 3.x.
-- Minimum swiftDialog version is `3.0.1.4955`.
-- Default Installomator path: `/Library/Management/AppAutoPatch/Installomator/Installomator.sh`
+- Minimum swiftDialog version is `3.1.0.4994`.
+- Default Installomator path: `/Library/Application Support/AppAutoPatch/Installomator/Installomator.sh`
 - Default Jamf binary path: `/usr/local/bin/jamf`
 - Homebrew detection prefers `/opt/homebrew/bin/brew`, then `/usr/local/bin/brew`
 - Default logging paths: `/var/log/org.churchofjesuschrist.log` and `/var/log/Installomator.log`
