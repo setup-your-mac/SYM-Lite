@@ -1724,6 +1724,7 @@ function normalizeSilentModeItemID() {
     }
 
     itemID="$(trimSilentModeOuterQuotes "${itemID}")"
+    itemID="${itemID//[[:space:]]/}"
 
     print -r -- "${itemID}"
 }

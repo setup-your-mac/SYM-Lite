@@ -6,11 +6,11 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for filing bug report for SYM-Lite.
+        Thank you for filing a bug report for SYM-Lite.
 
-        Please fill this out with enough detail to reproduce issue.
+        Please fill this out with enough detail to reproduce the issue.
 
-        Before filing, retest with latest `main` branch version of `SYM-Lite.zsh` unless maintainer asked for different build:
+        Before filing, retest with the latest `main` branch version of `SYM-Lite.zsh` unless a maintainer asked for a different build:
 
         ```zsh
         timestamp=$( date '+%Y-%m-%d-%H%M%S' )

@@ -206,7 +206,7 @@ If SYM-Lite reports an unknown item ID, compare Parameter 5 against the identifi
 ### Required
 - **macOS** 15+ (required by swiftDialog 3.x)
 - **Root access** — Script must run as `root`
-- **swiftDialog** 3.0.1.4955+ (auto-installed if missing)
+- **swiftDialog** 3.1.0.4994+ (auto-installed if missing)
 
 ### External Command Dependencies
 - **Installomator** — Required only when Installomator labels are configured and available for the current run
@@ -320,7 +320,7 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `organizationPreset` | `"2"` | swiftDialog Inspect Mode preset (1-4) |
-| `organizationInstallomatorFile` | `/Library/Management/...` | Path to Installomator.sh |
+| `organizationInstallomatorFile` | `/Library/Application Support/AppAutoPatch/Installomator/Installomator.sh` | Path to Installomator.sh |
 | `installomatorLog` | `/var/log/Installomator.log` | Installomator log path for monitoring |
 | `jamfBinary` | `/usr/local/bin/jamf` | Path to jamf binary |
 | `enableJamfPolicyItems` | `"true"` | Show and execute Jamf policy items |
@@ -338,6 +338,6 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 
 (The rest of the document — Logging, Troubleshooting, Testing Checklist, Next Steps, and Support — remains unchanged as the reordering was already applied where relevant.)
 
-**Version:** 1.0.0  
-**Date:** 12-Apr-2026  
+**Version:** 1.1.0  
+**Date:** 04-Aug-2026  
 **Author:** Dan K. Snelson (@dan-snelson)
