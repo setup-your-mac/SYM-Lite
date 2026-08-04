@@ -1,0 +1,74 @@
+name: Documentation
+description: Report missing, unclear, or outdated documentation for SYM-Lite
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for documentation-only issues: README drift, setup guidance gaps, screenshots, examples, or wording fixes.
+
+        If report includes runtime defect, use Bug Report form instead.
+
+  - type: dropdown
+    id: docs-area
+    attributes:
+      label: Which documentation area needs attention?
+      options:
+        - README.md
+        - CHANGELOG.md
+        - SECURITY.md
+        - Issue templates
+        - GitHub workflow documentation
+        - Screenshots or images
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: What kind of documentation problem is this?
+      options:
+        - Incorrect or outdated information
+        - Missing instructions or example
+        - Confusing wording or structure
+        - Broken link or bad reference
+        - Screenshot drift
+        - Typo or grammar issue
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-docs
+    attributes:
+      label: What is wrong today?
+      description: Describe current documentation problem.
+      placeholder: |
+        Example: README implies silent mode skips swiftDialog pre-flight, but current script still validates or installs swiftDialog before execution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-update
+    attributes:
+      label: What should it say instead?
+      description: Suggest corrected wording, structure, or content when possible.
+      placeholder: |
+        Example: Update silent mode section to state that swiftDialog pre-flight still runs even when no UI is shown.
+    validations:
+      required: true
+
+  - type: input
+    id: affected-links
+    attributes:
+      label: Affected file or URL
+      description: Add repo path, heading, or public URL that needs update.
+      placeholder: "e.g. README.md#silent-mode or .github/ISSUE_TEMPLATE/bug_report.yml"
+
+  - type: textarea
+    id: supporting-context
+    attributes:
+      label: Supporting context
+      description: Add screenshots, references, related commits, or version context.

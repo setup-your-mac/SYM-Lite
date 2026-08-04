@@ -16,8 +16,11 @@
 #
 # HISTORY
 #
-# Version 1.0.0, 12-Apr-2026, Dan K. Snelson (@dan-snelson)
-# - Official 1.0.0 release
+# Version 1.1.0, 04-Aug-2026, Dan K. Snelson (@dan-snelson)
+# - Normalize surrounding straight and smart quotes in silent-mode CSV item IDs before lookup (thanks for the heads-up, @applegurutim!)
+# - Clarify that Silent Mode Parameter 5 expects configured item identifiers, not Jamf command strings.
+# - Fix silent-mode Parameter 5 parsing when Jamf passes multiple comma-separated item IDs wrapped in one quoted CSV string (thanks for another heads-up, @applegurutim!)
+# - Updates for OpenAI renaming "Codex.app" to "ChatGPT.app"
 #
 ####################################################################################################
 
@@ -34,7 +37,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.0.0"
+scriptVersion="1.1.0"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -52,7 +55,7 @@ installomatorLog="/var/log/Installomator.log"
 SECONDS="0"
 
 # Minimum Required Version of swiftDialog
-swiftDialogMinimumRequiredVersion="3.0.1.4955"
+swiftDialogMinimumRequiredVersion="3.1.0.4994"
 
 # Load is-at-least for version comparison
 autoload -Uz is-at-least
@@ -77,7 +80,7 @@ operationsCSV="${5:-""}"                # Parameter 5: Comma-separated list of i
 organizationPreset="2"
 
 # Organization's Installomator Path
-organizationInstallomatorFile="/Library/Management/AppAutoPatch/Installomator/Installomator.sh"
+organizationInstallomatorFile="/Library/Application Support/AppAutoPatch/Installomator/Installomator.sh"
 
 # Organization's Jamf Binary Path
 jamfBinary="/usr/local/bin/jamf"
@@ -120,7 +123,7 @@ installomatorLabels=(
     "awsvpnclient | AWS VPN Client | /Applications/AWS VPN Client/AWS VPN Client.app | https://usw2.ics.services.jamfcloud.com/icon/hash_1d1bef5523d9f7eca5a45f2db9a63732e85edb5f914220807ca740ba7c4881b9"
     "bruno | Bruno | /Applications/Bruno.app | https://usw2.ics.services.jamfcloud.com/icon/hash_48501630ad2f5dd5de3e055d6acdda07682895440cad366ee7befac71cab1399"
     "charles | Charles Proxy | /Applications/Charles.app | https://use2.ics.services.jamfcloud.com/icon/hash_59b395ca81889a6d83deda8e6babc5ae4bc5931d36a72b738fe30b84d027593d"
-    "codex | Codex | /Applications/Codex.app | https://usw2.ics.services.jamfcloud.com/icon/hash_9d2a1b6f204d2a0d6e99dfc7a411edc0d269c1ab748514dcdde46ea7b4277e51"
+    "codex | OpenAI ChatGPT Codex | /Applications/ChatGPT.app | https://usw2.ics.services.jamfcloud.com/icon/hash_be9d2917e81980484f875d9056e5e4aa45d59dffa7b03c20f8dbb5137e96ee26"
     "docker | Docker | /Applications/Docker.app | https://usw2.ics.services.jamfcloud.com/icon/hash_a344dca5fdc0e86822e8f21ec91088e6591b1e292bdcebdee1281fbd794c2724"
     "jetbrainsintellijidea | IntelliJ IDEA | /Applications/IntelliJ IDEA.app | https://usw2.ics.services.jamfcloud.com/icon/hash_f669d73acc06297e1fc2f65245cfbdace03263f81aebf95444a8360a101b239d"
     "pique | Pique | /Applications/Pique.app | https://usw2.ics.services.jamfcloud.com/icon/hash_7d2539860cca6ec5ea5a71cba2aee7d93b9534e4267c16f73c7035f3dc025b9c"
@@ -894,6 +897,13 @@ function getAllItemIDs() {
     print -r -- "${allIDs[@]}"
 }
 
+function getAllItemIDsCSV() {
+    local allIDs=()
+
+    allIDs=($(getAllItemIDs))
+    print -r -- "${(j:,:)allIDs}"
+}
+
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -1654,6 +1664,85 @@ function prepareCompletionDialogConfigForUser() {
     info "Completion dialog config handed off to ${loggedInUser}."
 }
 
+function trimWhitespace() {
+    local value="$1"
+
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+
+    print -r -- "${value}"
+}
+
+function trimSilentModeOuterQuotes() {
+    local value="$1"
+    local preserveNestedQuotes="${2:-false}"
+    local quotePair=""
+    local leftQuote=""
+    local rightQuote=""
+    local innerValue=""
+    local -a quotePairs=(
+        "\"|\""
+        "'|'"
+        $'\342\200\234|\342\200\235'
+        $'\342\200\230|\342\200\231'
+    )
+
+    value="$(trimWhitespace "${value}")"
+    [[ -z "${value}" ]] && {
+        print -r -- ""
+        return 0
+    }
+
+    for quotePair in "${quotePairs[@]}"; do
+        leftQuote="${quotePair%%|*}"
+        rightQuote="${quotePair#*|}"
+
+        if [[ "${value}" == "${leftQuote}"*"${rightQuote}" ]]; then
+            innerValue="${value#${leftQuote}}"
+            innerValue="${innerValue%${rightQuote}}"
+
+            if [[ "${preserveNestedQuotes:l}" == "true" ]] \
+            && [[ "${innerValue}" == *"${leftQuote}"* || "${innerValue}" == *"${rightQuote}"* ]]; then
+                continue
+            fi
+
+            value="$(trimWhitespace "${innerValue}")"
+            break
+        fi
+    done
+
+    print -r -- "${value}"
+}
+
+function normalizeSilentModeItemID() {
+    local itemID="$1"
+
+    itemID="$(trimWhitespace "${itemID}")"
+    [[ -z "${itemID}" ]] && {
+        print -r -- ""
+        return 0
+    }
+
+    itemID="$(trimSilentModeOuterQuotes "${itemID}")"
+    itemID="${itemID//[[:space:]]/}"
+
+    print -r -- "${itemID}"
+}
+
+function normalizeSilentModeCSV() {
+    local csv="$1"
+
+    csv="$(trimWhitespace "${csv}")"
+    [[ -z "${csv}" ]] && {
+        print -r -- ""
+        return 0
+    }
+
+    csv="$(trimSilentModeOuterQuotes "${csv}" "true")"
+
+    print -r -- "${csv}"
+}
+
 ####################################################################################################
 #
 # Selection Interface Functions
@@ -1669,12 +1758,16 @@ function parseOperationsCSV() {
     selectedItems=()
     [[ -z "${csv}" ]] && return 0
 
-    local oldIFS="$IFS"
-    IFS=','
+    csv="$(normalizeSilentModeCSV "${csv}")"
+    [[ -z "${csv}" ]] && return 0
+
     local itemID
-    for itemID in ${csv}; do
-        itemID="${itemID// /}"                    # Strip whitespace
-        [[ -z "${itemID}" ]] && continue          # Skip empty entries
+    local originalItemID
+    local unknownItemMessage=""
+    for itemID in ${(s:,:)csv}; do
+        originalItemID="${itemID}"
+        itemID="$(normalizeSilentModeItemID "${itemID}")"
+        [[ -z "${itemID}" ]] && continue
         
         # Validate item exists
         local itemType
@@ -1694,12 +1787,16 @@ function parseOperationsCSV() {
             elif isConfiguredHomebrewItem "${itemID}"; then
                 warning "Skipping CSV item '${itemID}': Homebrew item is unavailable in this run"
             else
-                warning "Unknown item ID in CSV: '${itemID}'"
+                if [[ "${itemID}" != "${originalItemID}" ]]; then
+                    unknownItemMessage="Unknown item ID in CSV: '${originalItemID}' normalized to '${itemID}'. Item IDs must match configured identifiers exactly; remove extra quotes or formatting characters."
+                else
+                    unknownItemMessage="Unknown item ID in CSV: '${itemID}'. Item IDs must match configured identifiers exactly; remove extra quotes or formatting characters."
+                fi
+                warning "${unknownItemMessage}"
             fi
         fi
     done
-    IFS="${oldIFS}"
-    
+
     info "Parsed CSV: ${#selectedItems[@]} valid items selected"
 }
 
@@ -1797,6 +1894,7 @@ function showSelectionDialog() {
     if [[ "${operationMode}" == "silent" ]]; then
         parseOperationsCSV "${operationsCSV}"
         if [[ ${#selectedItems[@]} -eq 0 ]]; then
+            warning "Valid item IDs for this run: $(getAllItemIDsCSV)"
             errorOut "Silent mode: no valid operations selected from operationsCSV"
             return 1
         fi

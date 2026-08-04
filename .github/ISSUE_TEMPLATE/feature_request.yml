@@ -1,0 +1,71 @@
+name: Feature Request
+description: Suggest improvement for SYM-Lite
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Note: While all requests are welcome, finding available cycles to custom-code a feature we won't use in our production environment is always challenging.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe operator or end-user pain in concrete terms.
+      placeholder: |
+        Example: Silent mode needs clearer logging when configured item ID is skipped because `validationPath` already exists.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe what SYM-Lite should do instead.
+      placeholder: |
+        Example: Add explicit skip summary line in silent mode showing item ID, display name, and existing `validationPath`.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
+      description: Include workarounds, adjacent tools, or partial solutions you already tried.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Which part of project would this affect most?
+      options:
+        - Selection dialog or installed-state labels
+        - Inspect Mode progress or cache monitoring
+        - Silent mode parsing or `operationsCSV`
+        - Installomator label handling
+        - Homebrew item handling
+        - Jamf policy handling
+        - Pre-flight or dependency bootstrap
+        - Completion report or restart flow
+        - Logging or operator reporting
+        - README or examples
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Who benefits most?
+      options:
+        - Operators / Mac Admins
+        - End-users
+        - Both
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Anything else
+      description: Add screenshots, sample config, item-array examples, or deployment constraints.

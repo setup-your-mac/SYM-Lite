@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite) [![swiftDialog](https://img.shields.io/badge/swiftDialog-Enabled-blue)](https://swiftdialog.app) [![Semgrep Security Scan](https://img.shields.io/badge/security%20scanned%20by-Semgrep-00C7B7?style=flat&logo=semgrep&logoColor=white)](https://semgrep.dev)
 
-# SYM-Lite (1.0.0)
+# SYM-Lite (1.1.0)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) and [Homebrew](https://brew.sh) casks / formulas, as well as Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies), all through a unified [swiftDialog](https://swiftdialog.app) selection and reporting interface.
 
@@ -174,12 +174,18 @@ Run with Jamf parameters or direct positional arguments:
 
 **Via Jamf Policy:**
 - Parameter 4: `silent`
-- Parameter 5: `microsoftword,cask:docker,formula:node,installRosetta`
+- Parameter 5: `androidstudio,appleXcode,cask:codex`
+
+Parameter 5 must contain item identifiers exactly as they are defined in the configured item arrays. In this repo, that means values such as `androidstudio`, `appleXcode`, `homebrew`, `cask:1password-cli`, `cask:codex`, or `formula:direnv`, not a full Jamf command such as `jamf policy -event homebrew`.
 
 **Direct execution:**
 ```bash
-sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,cask:docker,formula:node"
+sudo /path/to/SYM-Lite.zsh "" "" "" silent "androidstudio,appleXcode,cask:codex"
 ```
+
+Silent mode also normalizes surrounding straight quotes and common smart quotes copied from rich-text sources, including when the entire CSV is wrapped once or when individual item IDs are quoted. That normalization is safe even when Jamf launches the script under a non-UTF shell locale. Plain comma-separated item IDs are still the recommended input format.
+
+If SYM-Lite reports an unknown item ID, compare Parameter 5 against the identifiers configured near the top of [SYM-Lite.zsh](SYM-Lite.zsh). For the current repo state, `googleChrome` is not a configured item ID, so silent mode will reject it until it is added to the appropriate item array.
 
 **Silent mode behavior:**
 - No selection dialog
@@ -200,7 +206,7 @@ sudo /path/to/SYM-Lite.zsh "" "" "" silent "microsoftword,cask:docker,formula:no
 ### Required
 - **macOS** 15+ (required by swiftDialog 3.x)
 - **Root access** — Script must run as `root`
-- **swiftDialog** 3.0.1.4955+ (auto-installed if missing)
+- **swiftDialog** 3.1.0.4994+ (auto-installed if missing)
 
 ### External Command Dependencies
 - **Installomator** — Required only when Installomator labels are configured and available for the current run
@@ -314,7 +320,7 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `organizationPreset` | `"2"` | swiftDialog Inspect Mode preset (1-4) |
-| `organizationInstallomatorFile` | `/Library/Management/...` | Path to Installomator.sh |
+| `organizationInstallomatorFile` | `/Library/Application Support/AppAutoPatch/Installomator/Installomator.sh` | Path to Installomator.sh |
 | `installomatorLog` | `/var/log/Installomator.log` | Installomator log path for monitoring |
 | `jamfBinary` | `/usr/local/bin/jamf` | Path to jamf binary |
 | `enableJamfPolicyItems` | `"true"` | Show and execute Jamf policy items |
@@ -332,6 +338,6 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 
 (The rest of the document — Logging, Troubleshooting, Testing Checklist, Next Steps, and Support — remains unchanged as the reordering was already applied where relevant.)
 
-**Version:** 1.0.0  
-**Date:** 12-Apr-2026  
+**Version:** 1.1.0  
+**Date:** 04-Aug-2026  
 **Author:** Dan K. Snelson (@dan-snelson)
