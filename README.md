@@ -155,11 +155,13 @@ sudo ~/Downloads/SYM-Lite.zsh
 ```
 
 **User experience:**
-1. Selection dialog appears with all configured items
+1. Selection dialog appears with all configured items; selectable items start checked when `selectionDialogDefaultChecked="true"`
 2. User selects one or more items using checkboxes
 3. Inspect Mode dialog launches showing real-time progress
 4. Completion report shows one row per selected item
 5. Optional restart prompt
+
+`selectionDialogDefaultChecked` affects interactive mode only. Users can deselect prechecked items before continuing, and already-installed items disabled by status sublabels remain unchecked. Silent mode continues to select items exclusively from `operationsCSV`.
 
 If the user clicks `Cancel` in the selection dialog, interactive mode exits cleanly without launching Inspect Mode. If `selectionDialogStatusSublabelsEnabled="true"` and every remaining valid item is already installed, interactive mode shows an informational dialog and exits without launching Inspect Mode. If no valid items remain after configuration validation, interactive mode exits cleanly with a generic unavailable-items message.
 
@@ -330,6 +332,7 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 | `organizationOverlayiconURL` | swiftDialog logo | Overlay icon URL |
 | `mainDialogIcon` | GitHub raw `SYM_icon.png` URL | Main dialog icon |
 | `fontSize` | `"14"` | Dialog message font size |
+| `selectionDialogDefaultChecked` | `"false"` | Start selectable interactive-mode items checked |
 | `selectionDialogStatusSublabelsEnabled` | `"true"` | Show install-state sublabels, disable already-installed items, and exit cleanly if no selectable items remain |
 | `restartPromptEnabled` | `"true"` | Show restart prompt after completion |
 | `scriptLog` | `/var/log/...log` | Client-side log path |

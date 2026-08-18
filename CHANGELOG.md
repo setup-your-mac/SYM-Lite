@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.2.0b2 - 18-Aug-2026
+- Added `selectionDialogDefaultChecked` to configure default selection for interactive-mode items (while keeping already-installed items disabled and unchecked; thanks for FR #14, @jeffmw777!)
+- Updated `codex` Validation Path
+
 ## 1.1.0 - 04-Aug-2026
 - Normalize surrounding straight and smart quotes in silent-mode CSV item IDs before lookup (thanks for the heads-up, @applegurutim!)
 - Clarify that Silent Mode Parameter 5 expects configured item identifiers, not Jamf command strings.
