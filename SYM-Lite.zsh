@@ -16,11 +16,8 @@
 #
 # HISTORY
 #
-# Version 1.1.0, 04-Aug-2026, Dan K. Snelson (@dan-snelson)
-# - Normalize surrounding straight and smart quotes in silent-mode CSV item IDs before lookup (thanks for the heads-up, @applegurutim!)
-# - Clarify that Silent Mode Parameter 5 expects configured item identifiers, not Jamf command strings.
-# - Fix silent-mode Parameter 5 parsing when Jamf passes multiple comma-separated item IDs wrapped in one quoted CSV string (thanks for another heads-up, @applegurutim!)
-# - Updates for OpenAI renaming "Codex.app" to "ChatGPT.app"
+# Version 1.2.0b1, 18-Aug-2026, Dan K. Snelson (@dan-snelson)
+# - Added `selectionDialogDefaultChecked` to configure default selection for interactive-mode items (while keeping already-installed items disabled and unchecked; thanks for FR #14, @jeffmw777!)
 #
 ####################################################################################################
 
@@ -37,7 +34,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.1.0"
+scriptVersion="1.2.0b1"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -105,6 +102,7 @@ mainDialogIcon="https://raw.githubusercontent.com/setup-your-mac/Setup-Your-Mac/
 
 # Dialog presentation defaults
 fontSize="14"
+selectionDialogDefaultChecked="false"
 selectionDialogStatusSublabelsEnabled="true"
 
 # Restart prompt behavior
@@ -426,6 +424,7 @@ function getSelectionDialogCheckboxesJSON() {
     local checkboxLabel=""
     local escapedCheckboxLabel=""
     local escapedIconURL=""
+    local checkboxChecked="false"
     local checkboxDisabled="false"
     local itemID=""
     local existingLabel=""
@@ -482,10 +481,16 @@ function getSelectionDialogCheckboxesJSON() {
             selectionDialogOptionRecords+=("${itemID}")
         fi
 
+        if [[ "${selectionDialogDefaultChecked:l}" == "true" ]] && [[ "${checkboxDisabled}" == "false" ]]; then
+            checkboxChecked="true"
+        else
+            checkboxChecked="false"
+        fi
+
         escapedCheckboxLabel=$(escapeJSONString "${checkboxLabel}")
         escapedItemID=$(escapeJSONString "${itemID}")
         escapedIconURL=$(escapeJSONString "${itemIconURL}")
-        checkboxItemsJSON="${checkboxItemsJSON}${separator}{\"label\":\"${escapedCheckboxLabel}\",\"name\":\"${escapedItemID}\",\"checked\":false,\"disabled\":${checkboxDisabled},\"icon\":\"${escapedIconURL}\"}"
+        checkboxItemsJSON="${checkboxItemsJSON}${separator}{\"label\":\"${escapedCheckboxLabel}\",\"name\":\"${escapedItemID}\",\"checked\":${checkboxChecked},\"disabled\":${checkboxDisabled},\"icon\":\"${escapedIconURL}\"}"
         separator=","
     done
 
