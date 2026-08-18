@@ -16,8 +16,9 @@
 #
 # HISTORY
 #
-# Version 1.2.0b1, 18-Aug-2026, Dan K. Snelson (@dan-snelson)
+# Version 1.2.0b2, 18-Aug-2026, Dan K. Snelson (@dan-snelson)
 # - Added `selectionDialogDefaultChecked` to configure default selection for interactive-mode items (while keeping already-installed items disabled and unchecked; thanks for FR #14, @jeffmw777!)
+# - Updated `codex` Validation Path
 #
 ####################################################################################################
 
@@ -34,7 +35,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.2.0b1"
+scriptVersion="1.2.0b2"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -102,7 +103,7 @@ mainDialogIcon="https://raw.githubusercontent.com/setup-your-mac/Setup-Your-Mac/
 
 # Dialog presentation defaults
 fontSize="14"
-selectionDialogDefaultChecked="false"
+selectionDialogDefaultChecked="true"
 selectionDialogStatusSublabelsEnabled="true"
 
 # Restart prompt behavior
@@ -121,7 +122,7 @@ installomatorLabels=(
     "awsvpnclient | AWS VPN Client | /Applications/AWS VPN Client/AWS VPN Client.app | https://usw2.ics.services.jamfcloud.com/icon/hash_1d1bef5523d9f7eca5a45f2db9a63732e85edb5f914220807ca740ba7c4881b9"
     "bruno | Bruno | /Applications/Bruno.app | https://usw2.ics.services.jamfcloud.com/icon/hash_48501630ad2f5dd5de3e055d6acdda07682895440cad366ee7befac71cab1399"
     "charles | Charles Proxy | /Applications/Charles.app | https://use2.ics.services.jamfcloud.com/icon/hash_59b395ca81889a6d83deda8e6babc5ae4bc5931d36a72b738fe30b84d027593d"
-    "codex | OpenAI ChatGPT Codex | /Applications/ChatGPT.app | https://usw2.ics.services.jamfcloud.com/icon/hash_be9d2917e81980484f875d9056e5e4aa45d59dffa7b03c20f8dbb5137e96ee26"
+    "codex | OpenAI ChatGPT Codex | /Applications/ChatGPT.localized/ChatGPT.app | https://usw2.ics.services.jamfcloud.com/icon/hash_be9d2917e81980484f875d9056e5e4aa45d59dffa7b03c20f8dbb5137e96ee26"
     "docker | Docker | /Applications/Docker.app | https://usw2.ics.services.jamfcloud.com/icon/hash_a344dca5fdc0e86822e8f21ec91088e6591b1e292bdcebdee1281fbd794c2724"
     "jetbrainsintellijidea | IntelliJ IDEA | /Applications/IntelliJ IDEA.app | https://usw2.ics.services.jamfcloud.com/icon/hash_f669d73acc06297e1fc2f65245cfbdace03263f81aebf95444a8360a101b239d"
     "pique | Pique | /Applications/Pique.app | https://usw2.ics.services.jamfcloud.com/icon/hash_7d2539860cca6ec5ea5a71cba2aee7d93b9534e4267c16f73c7035f3dc025b9c"
