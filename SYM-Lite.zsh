@@ -16,7 +16,8 @@
 #
 # HISTORY
 #
-# Version 1.2.0b2, 18-Aug-2026, Dan K. Snelson (@dan-snelson)
+# Version 1.2.0b3, 18-Aug-2026, Dan K. Snelson (@dan-snelson)
+# - Fixed validation of Installomator labels declared in multiline alias arms (Bug Report #16)
 # - Added `selectionDialogDefaultChecked` to configure default selection for interactive-mode items (while keeping already-installed items disabled and unchecked; thanks for FR #14, @jeffmw777!)
 # - Updated `codex` Validation Path
 #
@@ -35,7 +36,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.2.0b2"
+scriptVersion="1.2.0b3"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -516,6 +517,7 @@ function getAvailableInstallomatorLabels() {
         BEGIN {
             inLabelCase = 0
             caseDepth = 0
+            continuedArm = ""
         }
 
         /^[[:space:]]*case[[:space:]]+\$label[[:space:]]+in[[:space:]]*$/ {
@@ -525,6 +527,31 @@ function getAvailableInstallomatorLabels() {
         }
 
         inLabelCase {
+            if (continuedArm != "") {
+                if (caseDepth != 1) {
+                    exit 2
+                }
+
+                if ($0 ~ /^[[:space:]]*[A-Za-z0-9_*][A-Za-z0-9_|-]*\|\\[[:space:]]*$/) {
+                    labelFragment = $0
+                    sub(/^[[:space:]]*/, "", labelFragment)
+                    sub(/\\[[:space:]]*$/, "", labelFragment)
+                    continuedArm = continuedArm labelFragment
+                    next
+                }
+
+                if ($0 ~ /^[[:space:]]*[A-Za-z0-9_*][A-Za-z0-9_|-]*\)[[:space:]]*$/) {
+                    labelFragment = $0
+                    sub(/^[[:space:]]*/, "", labelFragment)
+                    sub(/\)[[:space:]]*$/, "", labelFragment)
+                    print continuedArm labelFragment
+                    continuedArm = ""
+                    next
+                }
+
+                exit 2
+            }
+
             if ($0 ~ /^[[:space:]]*case[[:space:]].*[[:space:]]+in[[:space:]]*$/) {
                 caseDepth++
                 next
@@ -538,11 +565,24 @@ function getAvailableInstallomatorLabels() {
                 next
             }
 
+            if (caseDepth == 1 && $0 ~ /^[[:space:]]*[A-Za-z0-9_*][A-Za-z0-9_|-]*\|\\[[:space:]]*$/) {
+                continuedArm = $0
+                sub(/^[[:space:]]*/, "", continuedArm)
+                sub(/\\[[:space:]]*$/, "", continuedArm)
+                next
+            }
+
             if (caseDepth == 1 && $0 ~ /^[[:space:]]*[A-Za-z0-9_*][A-Za-z0-9_|-]*\)[[:space:]]*$/) {
                 labelArm = $0
                 sub(/^[[:space:]]*/, "", labelArm)
                 sub(/\)[[:space:]]*$/, "", labelArm)
                 print labelArm
+            }
+        }
+
+        END {
+            if (continuedArm != "") {
+                exit 2
             }
         }
     ' "${organizationInstallomatorFile}"); then

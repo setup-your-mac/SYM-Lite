@@ -269,12 +269,18 @@ jobs:
           set -e
           echo "status=${status}" >> "${GITHUB_OUTPUT}"
 
-      - name: Finalize Zsh Syntax Result
+      - name: Run Zsh Regression Tests
+        id: zsh_tests
+        if: steps.zsh_syntax.outputs.status == '0'
+        run: zsh tests/installomator-label-parser.zsh
+
+      - name: Finalize Zsh Validation Result
         if: success() || failure()
         shell: bash
         run: |
           target_count="${{ steps.collect_targets.outputs.count }}"
           syntax_status="${{ steps.zsh_syntax.outputs.status }}"
+          tests_outcome="${{ steps.zsh_tests.outcome }}"
 
           if [[ "${target_count}" == "0" ]]; then
             {
@@ -286,19 +292,20 @@ jobs:
           fi
 
           {
-            echo "### Zsh Syntax"
+            echo "### Zsh Validation"
             echo
             echo "- Files scanned: ${target_count}"
+            echo "- Regression tests: ${tests_outcome}"
           } >> "${GITHUB_STEP_SUMMARY}"
 
-          if [[ "${syntax_status}" == "0" ]]; then
+          if [[ "${syntax_status}" == "0" && "${tests_outcome}" == "success" ]]; then
             echo "" >> "${GITHUB_STEP_SUMMARY}"
-            echo "✅ All zsh files passed \`zsh -n\`" >> "${GITHUB_STEP_SUMMARY}"
+            echo "✅ Zsh syntax and regression tests passed" >> "${GITHUB_STEP_SUMMARY}"
             exit 0
           fi
 
           echo "" >> "${GITHUB_STEP_SUMMARY}"
-          echo "❌ zsh syntax errors found" >> "${GITHUB_STEP_SUMMARY}"
+          echo "❌ Zsh validation failed" >> "${GITHUB_STEP_SUMMARY}"
           exit 1
 
   shellcheck:
