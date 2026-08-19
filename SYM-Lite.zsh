@@ -16,7 +16,7 @@
 #
 # HISTORY
 #
-# Version 1.2.0b3, 18-Aug-2026, Dan K. Snelson (@dan-snelson)
+# Version 1.2.0, 19-Aug-2026, Dan K. Snelson (@dan-snelson)
 # - Fixed validation of Installomator labels declared in multiline alias arms (Bug Report #16)
 # - Added `selectionDialogDefaultChecked` to configure default selection for interactive-mode items (while keeping already-installed items disabled and unchecked; thanks for FR #14, @jeffmw777!)
 # - Updated `codex` Validation Path
@@ -36,7 +36,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.2.0b3"
+scriptVersion="1.2.0"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
