@@ -341,6 +341,6 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 
 (The rest of the document — Logging, Troubleshooting, Testing Checklist, Next Steps, and Support — remains unchanged as the reordering was already applied where relevant.)
 
-**Version:** 1.2.0
+**Version:** 1.2.0  
 **Date:** 19-Aug-2026  
 **Author:** Dan K. Snelson (@dan-snelson)

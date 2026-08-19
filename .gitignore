@@ -29,6 +29,7 @@ Icon?
 
 # Local deployment script (contains versioning logic)
 .deploy*
+tests/
 
 # Version tracking (local only)
 VERSION.txt
