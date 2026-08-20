@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite) [![swiftDialog](https://img.shields.io/badge/swiftDialog-Enabled-blue)](https://swiftdialog.app) [![Semgrep Security Scan](https://img.shields.io/badge/security%20scanned%20by-Semgrep-00C7B7?style=flat&logo=semgrep&logoColor=white)](https://semgrep.dev)
 
-# SYM-Lite (1.1.0)
+# SYM-Lite (1.2.0)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) and [Homebrew](https://brew.sh) casks / formulas, as well as Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies), all through a unified [swiftDialog](https://swiftdialog.app) selection and reporting interface.
 
@@ -71,7 +71,7 @@ installomatorLabels=(
 )
 ```
 
-At runtime, SYM-Lite validates each configured label against `organizationInstallomatorFile` before building the picker or accepting silent-mode CSV input. If a label is missing from that Installomator file, or if the Installomator file is unavailable or unreadable, SYM-Lite logs a warning or error and removes Installomator labels from the current run while leaving other item types available.
+At runtime, SYM-Lite validates each configured label against single-line and continued top-level alias arms in `organizationInstallomatorFile` before building the picker or accepting silent-mode CSV input. If a label is missing from that Installomator file, or if the Installomator file is unavailable, unreadable, or cannot be parsed, SYM-Lite logs a warning or error and removes Installomator labels from the current run while leaving other item types available.
 
 ### Adding Homebrew Items
 
@@ -155,11 +155,13 @@ sudo ~/Downloads/SYM-Lite.zsh
 ```
 
 **User experience:**
-1. Selection dialog appears with all configured items
+1. Selection dialog appears with all configured items; selectable items start checked when `selectionDialogDefaultChecked="true"`
 2. User selects one or more items using checkboxes
 3. Inspect Mode dialog launches showing real-time progress
 4. Completion report shows one row per selected item
 5. Optional restart prompt
+
+`selectionDialogDefaultChecked` affects interactive mode only. Users can deselect prechecked items before continuing, and already-installed items disabled by status sublabels remain unchecked. Silent mode continues to select items exclusively from `operationsCSV`.
 
 If the user clicks `Cancel` in the selection dialog, interactive mode exits cleanly without launching Inspect Mode. If `selectionDialogStatusSublabelsEnabled="true"` and every remaining valid item is already installed, interactive mode shows an informational dialog and exits without launching Inspect Mode. If no valid items remain after configuration validation, interactive mode exits cleanly with a generic unavailable-items message.
 
@@ -330,6 +332,7 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 | `organizationOverlayiconURL` | swiftDialog logo | Overlay icon URL |
 | `mainDialogIcon` | GitHub raw `SYM_icon.png` URL | Main dialog icon |
 | `fontSize` | `"14"` | Dialog message font size |
+| `selectionDialogDefaultChecked` | `"true"` | Start selectable interactive-mode items checked |
 | `selectionDialogStatusSublabelsEnabled` | `"true"` | Show install-state sublabels, disable already-installed items, and exit cleanly if no selectable items remain |
 | `restartPromptEnabled` | `"true"` | Show restart prompt after completion |
 | `scriptLog` | `/var/log/...log` | Client-side log path |
@@ -338,6 +341,6 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 
 (The rest of the document — Logging, Troubleshooting, Testing Checklist, Next Steps, and Support — remains unchanged as the reordering was already applied where relevant.)
 
-**Version:** 1.1.0  
-**Date:** 04-Aug-2026  
+**Version:** 1.2.0  
+**Date:** 19-Aug-2026  
 **Author:** Dan K. Snelson (@dan-snelson)
