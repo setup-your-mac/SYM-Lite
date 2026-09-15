@@ -228,6 +228,19 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
           exit 1
 
+  fleet_self_service_tests:
+    name: Fleet Self-Service Tests
+    runs-on: macos-15
+    steps:
+      - name: Check Out Repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Run Native Fleet Regression Tests
+        # Extracts helpers only; HTTP is mocked and no installations are requested.
+        run: |
+          /bin/zsh --no-rcs tests/fleet-self-service.zsh
+          /bin/zsh --no-rcs tests/fleet-transport.zsh
+
   zsh_syntax:
     name: Zsh Syntax
     runs-on: ubuntu-latest
@@ -445,6 +458,7 @@ jobs:
       - semgrep
       - gitleaks
       - zsh_syntax
+      - fleet_self_service_tests
       - shellcheck
     steps:
       - name: Security Scan Complete
@@ -454,6 +468,7 @@ jobs:
           semgrep_result="${{ needs.semgrep.result }}"
           gitleaks_result="${{ needs.gitleaks.result }}"
           zsh_syntax_result="${{ needs.zsh_syntax.result }}"
+          fleet_tests_result="${{ needs.fleet_self_service_tests.result }}"
           shellcheck_result="${{ needs.shellcheck.result }}"
 
           badge() {
@@ -468,22 +483,23 @@ jobs:
           semgrep_badge="$(badge "${semgrep_result}")"
           gitleaks_badge="$(badge "${gitleaks_result}")"
           zsh_syntax_badge="$(badge "${zsh_syntax_result}")"
+          fleet_tests_badge="$(badge "${fleet_tests_result}")"
           shellcheck_badge="$(badge "${shellcheck_result}")"
 
           {
             echo "## Security Scan Summary"
             echo
-            echo "Semgrep ${semgrep_badge} | Gitleaks ${gitleaks_badge} | Zsh Syntax ${zsh_syntax_badge} | ShellCheck ${shellcheck_badge}"
+            echo "Semgrep ${semgrep_badge} | Gitleaks ${gitleaks_badge} | Zsh Syntax ${zsh_syntax_badge} | Fleet Tests ${fleet_tests_badge} | ShellCheck ${shellcheck_badge}"
             echo
-            if [[ "${semgrep_result}" == "success" && "${gitleaks_result}" == "success" && "${zsh_syntax_result}" == "success" && "${shellcheck_result}" == "success" ]]; then
+            if [[ "${semgrep_result}" == "success" && "${gitleaks_result}" == "success" && "${zsh_syntax_result}" == "success" && "${fleet_tests_result}" == "success" && "${shellcheck_result}" == "success" ]]; then
               echo "🐉 Mac Admin Security Dragon Slain"
             else
               echo "⚠️ Security Scan requires attention"
             fi
           } >> "${GITHUB_STEP_SUMMARY}"
 
-          echo "Semgrep ${semgrep_badge} | Gitleaks ${gitleaks_badge} | Zsh Syntax ${zsh_syntax_badge} | ShellCheck ${shellcheck_badge}"
-          if [[ "${semgrep_result}" == "success" && "${gitleaks_result}" == "success" && "${zsh_syntax_result}" == "success" && "${shellcheck_result}" == "success" ]]; then
+          echo "Semgrep ${semgrep_badge} | Gitleaks ${gitleaks_badge} | Zsh Syntax ${zsh_syntax_badge} | Fleet Tests ${fleet_tests_badge} | ShellCheck ${shellcheck_badge}"
+          if [[ "${semgrep_result}" == "success" && "${gitleaks_result}" == "success" && "${zsh_syntax_result}" == "success" && "${fleet_tests_result}" == "success" && "${shellcheck_result}" == "success" ]]; then
             echo "🐉 Mac Admin Security Dragon Slain"
             exit 0
           fi

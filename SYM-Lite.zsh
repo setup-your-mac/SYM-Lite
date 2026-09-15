@@ -93,6 +93,15 @@ enableJamfPolicyItems="true"
 # Enable or disable Homebrew package items
 enableHomebrewItems="true"
 
+# Enable or disable Fleet self-service software items
+enableFleetSoftwareItems="false"
+
+# Fleet Desktop authentication and install polling
+fleetURL="" # Optional Fleet URL override; otherwise discovered from the local Fleet installation
+fleetOrbitRoot="/opt/orbit"
+fleetInstallTimeout=1800
+fleetPollInterval=5
+
 # Update Homebrew metadata once before the first Homebrew package install
 homebrewUpdateBeforeInstall="false"
 
@@ -151,6 +160,14 @@ homebrewItems=(
 
 configuredHomebrewItems=("${homebrewItems[@]}")
 
+# Fleet Self-Service Software
+# Format: "fleet:123 | Display Name | Validation Path | Icon URL"
+# Use the Fleet software title ID. Leave Validation Path empty for script-only packages.
+fleetSoftwareItems=(
+)
+
+configuredFleetSoftwareItems=("${fleetSoftwareItems[@]}")
+
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # swiftDialog Variables
@@ -178,6 +195,8 @@ selectedItems=()
 selectedInstallomatorLabels=()
 selectedJamfPolicies=()
 selectedHomebrewItems=()
+selectedFleetSoftwareItems=()
+fleetExecutionFailed="false"
 failedItems=()
 completedItems=()
 skippedItems=()
@@ -384,6 +403,30 @@ function parseHomebrewItem() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Parse Fleet Software Item Configuration
+# Input: "fleet:123 | displayName | validationPath | iconURL"
+# Output: Sets itemFleetID, itemFleetTitleID, itemDisplayName, itemValidationPath, itemIconURL
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function parseFleetSoftwareItem() {
+    local itemConfig="$1"
+    local parts=("${(@s:|:)itemConfig}")
+    local partIndex
+    for partIndex in {1..4}; do
+        parts[${partIndex}]="${parts[${partIndex}]#"${parts[${partIndex}]%%[![:space:]]*}"}"
+        parts[${partIndex}]="${parts[${partIndex}]%"${parts[${partIndex}]##*[![:space:]]}"}"
+    done
+
+    itemFleetID="${parts[1]}"
+    itemFleetTitleID="${itemFleetID#fleet:}"
+    itemDisplayName="${parts[2]}"
+    itemValidationPath="${parts[3]}"
+    itemIconURL="${parts[4]}"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Get Selection Dialog Status Text
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -448,6 +491,10 @@ function getSelectionDialogCheckboxesJSON() {
         local parts=("${(@s: | :)item}")
         allSortKeys+=("${parts[2]} | homebrew | ${item}")
     done
+    for item in "${fleetSoftwareItems[@]}"; do
+        local parts=("${(@s: | :)item}")
+        allSortKeys+=("${parts[2]} | fleet | ${item}")
+    done
 
     for entry in "${(oi)allSortKeys[@]}"; do
         ((selectionDialogTotalItemCount++))
@@ -461,12 +508,18 @@ function getSelectionDialogCheckboxesJSON() {
         elif [[ "${itemType}" == "jamf" ]]; then
             parseJamfPolicyItem "${itemConfig}"
             itemID="${itemTrigger}"
+        elif [[ "${itemType}" == "fleet" ]]; then
+            parseFleetSoftwareItem "${itemConfig}"
+            itemID="${itemFleetID}"
         else
             parseHomebrewItem "${itemConfig}"
             itemID="${itemHomebrewID}"
         fi
 
         checkboxLabel=$(getSelectionDialogLabel "${itemDisplayName}" "${itemValidationPath}")
+        if [[ "${itemType}" == "fleet" && "${selectionDialogStatusSublabelsEnabled:l}" == "true" && -z "${itemValidationPath}" ]]; then
+            checkboxLabel="${itemDisplayName}"$'\n'"Validated by Fleet"
+        fi
         for existingLabel in "${usedCheckboxLabels[@]}"; do
             if [[ "${existingLabel}" == "${checkboxLabel}" ]]; then
                 checkboxLabel="${checkboxLabel} (${itemID})"
@@ -697,6 +750,305 @@ function normalizeInstallomatorLabels() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Fleet Self-service Helpers
+# Use the local host's Desktop token; never an administrator API token.
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function isConfiguredFleetSoftwareItem() {
+    local itemID="$1"
+    local item
+    for item in "${configuredFleetSoftwareItems[@]}"; do
+        local parts=("${(@s:|:)item}")
+        parts[1]="${parts[1]#"${parts[1]%%[![:space:]]*}"}"
+        parts[1]="${parts[1]%"${parts[1]##*[![:space:]]}"}"
+        [[ "${parts[1]}" == "${itemID}" ]] && return 0
+    done
+    return 1
+}
+
+function fleetJSONValue() {
+    /usr/bin/plutil -extract "$2" raw -o - - <<< "$1" 2>/dev/null
+}
+
+function fleetReadDeviceURL() {
+    emulate -L zsh
+    unsetopt XTRACE VERBOSE
+    local serverURL="${fleetURL}"
+    local token=""
+    local urlPattern='^https://[A-Za-z0-9.-]+(:[0-9]+)?$'
+    local tokenPattern='^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$'
+
+    fleetDeviceBaseURL=""
+    if [[ -z "${serverURL}" ]]; then
+        serverURL=$(/usr/bin/plutil -extract EnvironmentVariables.ORBIT_FLEET_URL raw -o - \
+            /Library/LaunchDaemons/com.fleetdm.orbit.plist 2>/dev/null) || serverURL=""
+        if [[ -z "${serverURL}" && -r "${fleetOrbitRoot}/fleet_url.txt" ]]; then
+            serverURL=$(<"${fleetOrbitRoot}/fleet_url.txt")
+        fi
+    fi
+    serverURL="${serverURL%/}"
+    [[ "${serverURL}" =~ ${urlPattern} ]] || return 1
+    [[ -r "${fleetOrbitRoot}/identifier" ]] || return 1
+    token=$(<"${fleetOrbitRoot}/identifier")
+    [[ "${token}" =~ ${tokenPattern} ]] || return 1
+    fleetDeviceBaseURL="${serverURL}/api/v1/fleet/device/${token}"
+}
+
+function fleetRequest() {
+    emulate -L zsh
+    unsetopt XTRACE VERBOSE
+    local method="$1"
+    local suffix="$2"
+    local maxTime="${3:-30}"
+    local response=""
+    fleetResponse=""
+    fleetHTTPStatus=""
+    if (( ${fleetDeadline:-0} > 0 )); then
+        local remaining=$((fleetDeadline - SECONDS))
+        (( remaining > 0 )) || return 1
+        (( remaining < maxTime )) && maxTime=${remaining}
+    fi
+
+    # URL goes over stdin, not into process arguments, curl diagnostics, or logs.
+    # Never retry a POST: a lost response can still mean the install was queued.
+    fleetReadDeviceURL || return 1
+    response=$(printf 'url = "%s%s"\n' "${fleetDeviceBaseURL}" "${suffix}" |
+        /usr/bin/curl -q --config - --silent --globoff --proto '=https' \
+            --connect-timeout 10 --max-time "${maxTime}" --request "${method}" \
+            --header 'Accept: application/json' --write-out $'\n%{http_code}' 2>/dev/null) || return 1
+    fleetHTTPStatus="${response##*$'\n'}"
+    fleetResponse="${response%$'\n'*}"
+    [[ "${fleetHTTPStatus}" == 2[0-9][0-9] ]]
+}
+
+function normalizeFleetSoftwareItems() {
+    emulate -L zsh
+    unsetopt XTRACE VERBOSE
+    local item=""
+    local fleetDeviceBaseURL=""
+    local itemIDPattern='^fleet:[1-9][0-9]*$'
+    local -a seenIDs=()
+    fleetSoftwareItems=()
+
+    if [[ "${enableFleetSoftwareItems:l}" != "true" ]]; then
+        [[ "${enableFleetSoftwareItems:l}" == "false" ]] || warning "Invalid enableFleetSoftwareItems; Fleet items remain disabled"
+        return 0
+    fi
+    [[ ${#configuredFleetSoftwareItems[@]} -eq 0 ]] && return 0
+    if [[ "${fleetInstallTimeout}" != <1-86400> || "${fleetPollInterval}" != <1-300> ]]; then
+        warning "Fleet timeout must be 1–86400 seconds and poll interval 1–300 seconds; hiding Fleet items"
+        return 0
+    fi
+    if ! fleetReadDeviceURL; then
+        warning "Fleet server URL or Desktop token is unavailable; hiding Fleet items until fleetd is ready"
+        return 0
+    fi
+
+    for item in "${configuredFleetSoftwareItems[@]}"; do
+        local parts=("${(@s:|:)item}")
+        local partCount=${#parts[@]}
+        local partIndex=0
+        for partIndex in {1..4}; do
+            parts[${partIndex}]="${parts[${partIndex}]#"${parts[${partIndex}]%%[![:space:]]*}"}"
+            parts[${partIndex}]="${parts[${partIndex}]%"${parts[${partIndex}]##*[![:space:]]}"}"
+        done
+        if [[ ${partCount} -ne 4 || ! "${parts[1]}" =~ ${itemIDPattern} || -z "${parts[2]}" \
+            || ( -n "${parts[3]}" && "${parts[3]}" != /* ) ]]; then
+            warning "Invalid Fleet item configuration; expected fleet:<positive title ID>, name, optional absolute path, and icon"
+            continue
+        fi
+        if (( ${seenIDs[(Ie)${parts[1]}]} )); then
+            warning "Duplicate Fleet item '${parts[1]}'; keeping the first entry"
+            continue
+        fi
+        seenIDs+=("${parts[1]}")
+        fleetSoftwareItems+=("${(j: | :)parts}")
+    done
+    preFlight "Fleet item validation complete: ${#fleetSoftwareItems[@]} available"
+}
+
+function fleetFindSoftwareTitle() {
+    local titleID="$1"
+    local page=0
+    local index=0
+    local foundID=""
+    local catalog=""
+    fleetTitleJSON=""
+
+    while (( SECONDS < fleetDeadline && page < 100 )); do
+        fleetRequest GET "/software?self_service=true&per_page=100&page=${page}&order_key=name&order_direction=asc" || return 1
+        catalog="${fleetResponse}"
+        /usr/bin/plutil -convert json -o /dev/null - >/dev/null 2>&1 <<< "${catalog}" || return 1
+        index=0
+        while (( index < 100 )); do
+            foundID=$(fleetJSONValue "${catalog}" "software.${index}.id") || break
+            if [[ "${foundID}" == "${titleID}" ]]; then
+                fleetTitleJSON=$(/usr/bin/plutil -extract "software.${index}" json -o - - <<< "${catalog}" 2>/dev/null) || return 1
+                return 0
+            fi
+            ((index++))
+        done
+        [[ "$(fleetJSONValue "${catalog}" meta.has_next_results)" == "true" ]] || return 2
+        ((page++))
+    done
+    return 1
+}
+
+function fleetUpdateInspectStatus() {
+    local fleetID="$1"
+    local itemStatus="$2"
+    local message="$3"
+    local itemIndex=${selectedItems[(Ie)${fleetID}]}
+    if [[ "${operationMode}" != "silent" && -n "${dialogCommandFile}" && ${itemIndex} -gt 0 ]]; then
+        # Inspect's legacy indexed command supports IDs containing ':' (fleet:123).
+        printf 'listitem: index: %s, status: %s, statustext: %s\n' \
+            "$((itemIndex - 1))" "${itemStatus}" "${message}" >> "${dialogCommandFile}"
+    fi
+    return 0
+}
+
+function fleetReadInstallResult() {
+    local installUUID="$1"
+    local titleID="$2"
+    local uuidPattern='^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$'
+    fleetInstallStatus=""
+    [[ "${installUUID}" =~ ${uuidPattern} ]] || return 1
+    fleetRequest GET "/software/install/${installUUID}/results" || return 1
+    # Match both identifiers before trusting the result, even for an existing attempt.
+    [[ "$(fleetJSONValue "${fleetResponse}" results.install_uuid)" == "${installUUID}" \
+        && "$(fleetJSONValue "${fleetResponse}" results.software_title_id)" == "${titleID}" ]] || return 1
+    fleetInstallStatus=$(fleetJSONValue "${fleetResponse}" results.status) || return 1
+    [[ "${fleetInstallStatus}" == pending_install || "${fleetInstallStatus}" == installed \
+        || "${fleetInstallStatus}" == failed_install ]]
+}
+
+function fleetWaitForInstall() {
+    local titleID="$1"
+    local previousUUID="$2"
+    local installUUID="$3"
+    local uuidPattern='^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$'
+    local remaining=0
+    local pause=0
+
+    while (( SECONDS < fleetDeadline )); do
+        if [[ -z "${installUUID}" ]]; then
+            if fleetFindSoftwareTitle "${titleID}"; then
+                installUUID=$(fleetJSONValue "${fleetTitleJSON}" software_package.last_install.install_uuid)
+                if [[ "${installUUID}" == "${previousUUID}" || ! "${installUUID}" =~ ${uuidPattern} ]]; then
+                    installUUID=""
+                else
+                    info "Fleet title ${titleID}: tracking install ${installUUID}"
+                fi
+            fi
+        fi
+        if [[ -n "${installUUID}" ]] && fleetReadInstallResult "${installUUID}" "${titleID}"; then
+            case "${fleetInstallStatus}" in
+                installed) return 0 ;;
+                failed_install)
+                    fleetFailureReason="Fleet reported a failed install"
+                    fleetResultText="Failed"
+                    return 1
+                    ;;
+            esac
+        fi
+        if [[ "${fleetHTTPStatus}" == 401 || "${fleetHTTPStatus}" == 403 ]]; then
+            fleetFailureReason="Fleet device access denied; check token readiness and self-service SSO requirements"
+            return 1
+        fi
+        remaining=$((fleetDeadline - SECONDS))
+        (( remaining > 0 )) || break
+        pause=${fleetPollInterval}
+        (( pause > remaining )) && pause=${remaining}
+        /bin/sleep "${pause}"
+    done
+    fleetFailureReason="Timed out waiting for a confirmed Fleet result; the queued install may still run"
+    fleetResultText="Timed out"
+    return 1
+}
+
+function executeFleetSoftwareItem() {
+    emulate -L zsh
+    unsetopt XTRACE VERBOSE
+    local fleetID="$1"
+    local validationPath="$2"
+    local displayName="$3"
+    local iconURL="$4"
+    local titleID="${fleetID#fleet:}"
+    local previousUUID=""
+    local installUUID=""
+    local fleetDeviceBaseURL=""
+    local fleetResponse=""
+    local fleetHTTPStatus=""
+    local fleetTitleJSON=""
+    local fleetInstallStatus=""
+    local fleetFailureReason=""
+    local fleetResultText="Needs review"
+    local fleetReportKey="needsReview"
+    local fleetReportStatus="error"
+    local fleetDeadline=$((SECONDS + fleetInstallTimeout))
+
+    if isValidationPathPresent "${validationPath}"; then
+        info "Skipping '${fleetID}': validation path already exists"
+        skippedItems+=("${displayName}")
+        addCompletionReportRecord "${displayName}" "alreadyInstalled" "success" "${iconURL}" "No action was needed" "Already installed"
+        fleetUpdateInspectStatus "${fleetID}" success "Already installed"
+        return 0
+    fi
+
+    notice "Requesting Fleet install '${fleetID}' (${displayName}) …"
+    fleetUpdateInspectStatus "${fleetID}" wait "Waiting for Fleet"
+    if ! fleetFindSoftwareTitle "${titleID}"; then
+        fleetFailureReason="Self-service title unavailable or Fleet catalog could not be read (HTTP ${fleetHTTPStatus:-unavailable})"
+    elif [[ "$(fleetJSONValue "${fleetTitleJSON}" software_package.self_service)" != "true" ]]; then
+        fleetFailureReason="Title is not a self-service package; App Store installs are not supported"
+    else
+        previousUUID=$(fleetJSONValue "${fleetTitleJSON}" software_package.last_install.install_uuid)
+        [[ "${previousUUID}" == "null" ]] && previousUUID=""
+        if [[ -n "${previousUUID}" ]]; then
+            if ! fleetReadInstallResult "${previousUUID}" "${titleID}"; then
+                fleetFailureReason="Could not verify the previous Fleet install; no new install was requested"
+            elif [[ "${fleetInstallStatus}" == pending_install ]]; then
+                installUUID="${previousUUID}"
+                info "Fleet title ${titleID}: waiting for existing install ${installUUID}"
+            fi
+        fi
+        if [[ -z "${fleetFailureReason}" && -z "${installUUID}" ]]; then
+            if ! fleetRequest POST "/software/install/${titleID}" || [[ "${fleetHTTPStatus}" != 202 ]]; then
+                fleetFailureReason="Fleet install request was not confirmed (HTTP ${fleetHTTPStatus:-unavailable}); check Fleet before retrying"
+            fi
+        fi
+        if [[ -z "${fleetFailureReason}" ]]; then
+            if fleetWaitForInstall "${titleID}" "${previousUUID}" "${installUUID}"; then
+                if [[ -n "${validationPath}" ]] && ! isValidationPathPresent "${validationPath}"; then
+                    fleetFailureReason="Fleet reported success but the validation path is missing"
+                else
+                    info "Fleet install '${fleetID}' completed and validated"
+                    completedItems+=("${displayName}")
+                    addCompletionReportRecord "${displayName}" "installed" "success" "${iconURL}" "Fleet confirmed completion" "Completed"
+                    fleetUpdateInspectStatus "${fleetID}" success "Completed"
+                    return 0
+                fi
+            fi
+        fi
+    fi
+
+    if [[ "${fleetHTTPStatus}" == 401 || "${fleetHTTPStatus}" == 403 ]]; then
+        fleetFailureReason="Fleet device access denied; check token readiness and self-service SSO requirements"
+    fi
+    errorOut "Fleet '${fleetID}': ${fleetFailureReason}"
+    fleetExecutionFailed="true"
+    failedItems+=("${displayName}")
+    if [[ "${fleetResultText}" == "Failed" ]]; then
+        fleetReportKey="notInstalled"
+        fleetReportStatus="fail"
+    fi
+    addCompletionReportRecord "${displayName}" "${fleetReportKey}" "${fleetReportStatus}" "${iconURL}" "${fleetFailureReason}" "${fleetResultText}"
+    fleetUpdateInspectStatus "${fleetID}" "${fleetReportStatus}" "${fleetResultText}"
+    return 1
+}
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Normalize Jamf Policy Item Availability
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -916,7 +1268,7 @@ function isConfiguredInstallomatorLabel() {
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Get All Item IDs
-# Returns: Array of all item identifiers (labels + triggers)
+# Returns: Array of all configured item identifiers available for this run
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 function getAllItemIDs() {
@@ -939,6 +1291,12 @@ function getAllItemIDs() {
         local parts=("${(@s: | :)item}")
         allIDs+=("${parts[1]}")
     done
+
+    # Add Fleet software title IDs
+    for item in "${fleetSoftwareItems[@]}"; do
+        local parts=("${(@s: | :)item}")
+        allIDs+=("${parts[1]}")
+    done
     
     print -r -- "${allIDs[@]}"
 }
@@ -955,7 +1313,7 @@ function getAllItemIDsCSV() {
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Get Item Type
 # Input: Item ID
-# Output: "installomator" or "jamf" or empty string if not found
+# Output: "installomator", "jamf", "homebrew", "fleet", or empty string if not found
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 function getItemType() {
@@ -984,6 +1342,15 @@ function getItemType() {
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
             print -r -- "homebrew"
+            return 0
+        fi
+    done
+
+    # Check Fleet software items
+    for item in "${fleetSoftwareItems[@]}"; do
+        local parts=("${(@s: | :)item}")
+        if [[ "${parts[1]}" == "${itemID}" ]]; then
+            print -r -- "fleet"
             return 0
         fi
     done
@@ -1023,6 +1390,15 @@ function getItemConfig() {
 
     # Check Homebrew items
     for item in "${homebrewItems[@]}"; do
+        local parts=("${(@s: | :)item}")
+        if [[ "${parts[1]}" == "${itemID}" ]]; then
+            print -r -- "${item}"
+            return 0
+        fi
+    done
+
+    # Check Fleet software items
+    for item in "${fleetSoftwareItems[@]}"; do
         local parts=("${(@s: | :)item}")
         if [[ "${parts[1]}" == "${itemID}" ]]; then
             print -r -- "${item}"
@@ -1462,6 +1838,20 @@ normalizeInstallomatorLabels
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Pre-flight Check: Normalize Fleet Software Item Availability
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+normalizeFleetSoftwareItems
+
+if [[ "${enableFleetSoftwareItems:l}" == "true" ]]; then
+    preFlight "Fleet software items enabled (${#fleetSoftwareItems[@]} configured for this run)"
+else
+    preFlight "Fleet software items disabled by configuration"
+fi
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Pre-flight Check: Validate Jamf Binary (if Jamf policy items configured)
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -1506,6 +1896,7 @@ function createSYMLiteInspectConfig() {
     local hasInstallomator="false"
     local hasJamf="false"
     local hasHomebrew="false"
+    local hasFleet="false"
 
     dialogInspectModeJSONFile=$( /usr/bin/mktemp "/var/tmp/dialogJSONFile_InspectMode_${organizationScriptName}.XXXXXX" )
     if [[ -z "${dialogInspectModeJSONFile}" || ! -e "${dialogInspectModeJSONFile}" ]]; then
@@ -1551,6 +1942,16 @@ function createSYMLiteInspectConfig() {
             \"paths\": [\"$(escapeJSONString "${itemValidationPath}")\"],
             \"icon\": \"$(escapeJSONString "${itemIconURL}")\"
         }"
+        elif [[ "${itemType}" == "fleet" ]]; then
+            parseFleetSoftwareItem "${itemConfig}"
+            # Fleet completion is driven by its install result, never by filesystem monitoring.
+            local jsonBlock="{
+            \"id\": \"$(escapeJSONString "${itemFleetID}")\",
+            \"displayName\": \"$(escapeJSONString "${itemDisplayName}")\",
+            \"guiIndex\": ${guiIndex},
+            \"paths\": [],
+            \"icon\": \"$(escapeJSONString "${itemIconURL}")\"
+        }"
         else
             warning "Unknown item type for ID: ${itemID}"
             continue
@@ -1570,23 +1971,37 @@ function createSYMLiteInspectConfig() {
     [[ ${#selectedInstallomatorLabels[@]} -gt 0 ]] && hasInstallomator="true"
     [[ ${#selectedJamfPolicies[@]} -gt 0 ]] && hasJamf="true"
     [[ ${#selectedHomebrewItems[@]} -gt 0 ]] && hasHomebrew="true"
+    [[ ${#selectedFleetSoftwareItems[@]} -gt 0 ]] && hasFleet="true"
 
     cachePaths+=("/Library/Managed Installs/Cache")
     sideMessages+=("Thank you for your patience.")
-    sideMessages+=("Progress is monitored by watching for files to appear.")
+    if [[ "${hasFleet}" == "true" ]]; then
+        sideMessages+=("Fleet confirms the result of each requested installation.")
+    else
+        sideMessages+=("Progress is monitored by watching for files to appear.")
+    fi
     sideMessages+=("Please wait while items are being processed.")
-    sideMessages+=("Each item completes when its validation path appears.")
+    if [[ "${hasFleet}" == "true" ]]; then
+        sideMessages+=("Fleet items complete after server confirmation and any configured file checks.")
+    else
+        sideMessages+=("Each item completes when its validation path appears.")
+    fi
     sideMessages+=("This process may take several minutes.")
     sideMessages+=("The installation will complete automatically.")
     sideMessages+=("A restart may be required after completion.")
 
     if [[ "${hasInstallomator}" == "true" ]]; then
-        logMonitorJSON='    "logMonitor": {
+        # swiftDialog auto-matches log messages against every item's display name,
+        # including pathless Fleet items. Disable it in mixed runs so only Fleet
+        # results can complete Fleet rows; Installomator retains path monitoring.
+        if [[ "${hasFleet}" != "true" ]]; then
+            logMonitorJSON='    "logMonitor": {
         "path": "'"$(escapeJSONString "${installomatorLog}")"'",
         "preset": "installomator",
         "autoMatch": true,
         "startFromEnd": true
     },'
+        fi
         cachePaths+=("/Library/Application Support/Installomator/Downloads")
         sideMessages+=("Applications are being installed via Installomator.")
     fi
@@ -1602,10 +2017,18 @@ function createSYMLiteInspectConfig() {
         sideMessages+=("Approved Homebrew packages are being installed in the logged-in user context.")
     fi
 
+    if [[ "${hasFleet}" == "true" ]]; then
+        sideMessages+=("Self-service software and scripts are being installed through Fleet.")
+    fi
+
     cachePathsJSON="$(buildJSONStringArray "${cachePaths[@]}")"
     sideMessageJSON="$(buildJSONStringArray "${sideMessages[@]}")"
 
-    if [[ "${hasJamf}" == "true" && "${hasInstallomator}" != "true" && "${hasHomebrew}" != "true" ]]; then
+    if [[ "${hasFleet}" == "true" ]]; then
+        dialogTitle="Processing ${totalItems} Item"
+        [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}s"
+        messageText="Processing selected items. Fleet installations require server confirmation and any configured file checks."
+    elif [[ "${hasJamf}" == "true" && "${hasInstallomator}" != "true" && "${hasHomebrew}" != "true" ]]; then
         dialogTitle="Executing ${totalItems} Policy"
         [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}ies"
         messageText="Executing selected policies. Items complete when files appear at their validation paths."
@@ -1620,9 +2043,10 @@ function createSYMLiteInspectConfig() {
     fi
     
     # Create the full JSON configuration
-    # Note: Inspect Mode uses dual monitoring when Installomator items are selected:
-    # - logMonitor: Parses Installomator.log for rich status updates (Installomator labels only)
-    # - paths: Watches file system via FSEvents for completion detection (all item types)
+    # Note: Inspect Mode monitors progress according to the selected item types:
+    # - logMonitor: Parses Installomator.log for rich status updates in runs without Fleet
+    # - paths: Watches file system via FSEvents for non-Fleet completion detection
+    # - Fleet: Command-file updates reflect the server-confirmed install result
     if ! /bin/cat > "${dialogInspectModeJSONFile}" <<EOF
 {
     "preset": "preset${organizationPreset}",
@@ -1832,6 +2256,10 @@ function parseOperationsCSV() {
                 warning "Skipping CSV item '${itemID}': Homebrew items are disabled"
             elif isConfiguredHomebrewItem "${itemID}"; then
                 warning "Skipping CSV item '${itemID}': Homebrew item is unavailable in this run"
+            elif [[ "${enableFleetSoftwareItems:l}" != "true" ]] && isConfiguredFleetSoftwareItem "${itemID}"; then
+                warning "Skipping CSV item '${itemID}': Fleet software items are disabled"
+            elif isConfiguredFleetSoftwareItem "${itemID}"; then
+                warning "Skipping CSV item '${itemID}': Fleet software item is unavailable in this run"
             else
                 if [[ "${itemID}" != "${originalItemID}" ]]; then
                     unknownItemMessage="Unknown item ID in CSV: '${originalItemID}' normalized to '${itemID}'. Item IDs must match configured identifiers exactly; remove extra quotes or formatting characters."
@@ -1958,7 +2386,11 @@ function showSelectionDialog() {
     # Build message
     baseMessage="**$(date +'Happy %A,') ${loggedInUserFirstname}!**\n\nSelect items to install; Homebrew casks and formulae are available **after** \`brew\` has been installed."
 
-    # Build unified checkbox list (Installomator + Jamf, sorted together by display name)
+    if [[ ${#fleetSoftwareItems[@]} -gt 0 ]]; then
+        baseMessage="${baseMessage}\n\nFleet items use self-service software configured for this Mac."
+    fi
+
+    # Build the unified checkbox list, sorted together by display name
     getSelectionDialogCheckboxesJSON
 
     if [[ ${selectionDialogTotalItemCount} -eq 0 ]]; then
@@ -2023,6 +2455,7 @@ function separateSelectedItemsByType() {
     selectedInstallomatorLabels=()
     selectedJamfPolicies=()
     selectedHomebrewItems=()
+    selectedFleetSoftwareItems=()
     
     for itemID in "${selectedItems[@]}"; do
         local itemType
@@ -2034,10 +2467,12 @@ function separateSelectedItemsByType() {
             selectedJamfPolicies+=("${itemID}")
         elif [[ "${itemType}" == "homebrew" ]]; then
             selectedHomebrewItems+=("${itemID}")
+        elif [[ "${itemType}" == "fleet" ]]; then
+            selectedFleetSoftwareItems+=("${itemID}")
         fi
     done
     
-    info "Separated selections: ${#selectedInstallomatorLabels[@]} Installomator, ${#selectedJamfPolicies[@]} Jamf policies, ${#selectedHomebrewItems[@]} Homebrew"
+    info "Separated selections: ${#selectedInstallomatorLabels[@]} Installomator, ${#selectedJamfPolicies[@]} Jamf policies, ${#selectedHomebrewItems[@]} Homebrew, ${#selectedFleetSoftwareItems[@]} Fleet"
 }
 
 
@@ -2357,6 +2792,9 @@ function executeSYMLiteItems() {
         elif [[ "${itemType}" == "homebrew" ]]; then
             parseHomebrewItem "${itemConfig}"
             executeHomebrewItem "${itemHomebrewID}" "${itemBrewMode}" "${itemBrewToken}" "${itemValidationPath}" "${itemDisplayName}" "${itemIconURL}"
+        elif [[ "${itemType}" == "fleet" ]]; then
+            parseFleetSoftwareItem "${itemConfig}"
+            executeFleetSoftwareItem "${itemFleetID}" "${itemValidationPath}" "${itemDisplayName}" "${itemIconURL}"
         else
             warning "Unknown item type for ID: ${itemID}"
         fi
@@ -2604,12 +3042,15 @@ function promptForRestart() {
 ####################################################################################################
 
 notice "SYM-Lite initialized successfully"
-notice "Configuration: ${#installomatorLabels[@]} Installomator labels, ${#jamfPolicyItems[@]} Jamf policy items, ${#homebrewItems[@]} Homebrew items"
+notice "Configuration: ${#installomatorLabels[@]} Installomator labels, ${#jamfPolicyItems[@]} Jamf policy items, ${#homebrewItems[@]} Homebrew items, ${#fleetSoftwareItems[@]} Fleet software items"
 if [[ "${enableJamfPolicyItems:l}" != "true" ]]; then
     notice "Jamf policy items are disabled by configuration"
 fi
 if [[ "${enableHomebrewItems:l}" != "true" ]]; then
     notice "Homebrew items are disabled by configuration"
+fi
+if [[ "${enableFleetSoftwareItems:l}" != "true" ]]; then
+    notice "Fleet software items are disabled by configuration"
 fi
 notice "Operation mode: ${operationMode}"
 
@@ -2642,4 +3083,7 @@ else
 fi
 
 info "SYM-Lite execution complete - Total Elapsed Time: $(formattedElapsedTime)"
+if [[ "${fleetExecutionFailed}" == "true" ]]; then
+    quitScript 1
+fi
 quitScript 0
