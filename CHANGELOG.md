@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.3.0 - 05-Oct-2026
+- Updated icon for Visual Studio Code
+- Validated with Monocle
+- Moved swiftDialog hand-off files into a root-owned per-run directory under `/var/tmp`; `quit:` now sent as the logged-in user
+- Removed `/usr/local/bin` from `PATH`; swiftDialog and `jamf` now run from root-owned paths
+- Added Installomator ownership and permissions check before executing labels
+- Exits non-zero when any item fails so Jamf Pro reports failed runs
+- `runAsUser` no longer re-runs failed commands
+- Made Homebrew validation paths architecture-aware (Intel: `/usr/local`; Apple silicon: `/opt/homebrew`)
+- Normalized and validated `operationMode` (Parameter 4)
+- Hardened swiftDialog install / update checks (empty version, `installer` exit status, post-install version)
+- Fixed home directory parsing for paths containing spaces
+- Excluded `_mbsetupuser` and `root` as valid logged-in users
+- Inspect Mode window now moveable and can be minimized via JSON `options` (swiftDialog 3.1.1+; ignored on 3.1.0)
+- Restart prompt hides default keyboard actions to prevent accidental restarts (swiftDialog 3.1.1+)
+
 ## 1.2.0 - 19-Aug-2026
 - Fixed validation of Installomator labels declared in multiline alias arms (Bug Report #16)
 - Added `selectionDialogDefaultChecked` to configure default selection for interactive-mode items (while keeping already-installed items disabled and unchecked; thanks for FR #14, @jeffmw777!)
