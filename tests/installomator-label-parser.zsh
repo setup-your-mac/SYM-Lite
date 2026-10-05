@@ -72,6 +72,10 @@ function preFlight() { :; }
 function warning() { :; }
 function errorOut() { :; }
 
+# Fixtures are user-owned and CI runs on Linux, so stub the root-ownership guard
+installomatorOwnershipTrusted="true"
+function validateInstallomatorOwnership() { [[ "${installomatorOwnershipTrusted}" == "true" ]]; }
+
 /bin/cat > "${validFixture}" <<'FIXTURE'
 case $label in
     singlelabel|singlealias)
@@ -121,6 +125,14 @@ normalizeInstallomatorLabels
     || fail "Normalization removed a configured multiline alias"
 [[ "${installomatorLabels[1]}" == "${configuredInstallomatorLabels[1]}" ]] \
     || fail "Normalization changed the configured multiline alias"
+
+installomatorOwnershipTrusted="false"
+installomatorLabels=("${configuredInstallomatorLabels[@]}")
+normalizeInstallomatorLabels
+
+[[ ${#installomatorLabels[@]} -eq 0 ]] \
+    || fail "Normalization kept labels from an untrusted Installomator"
+installomatorOwnershipTrusted="true"
 
 /bin/cat > "${incompleteFixture}" <<'FIXTURE'
 case $label in

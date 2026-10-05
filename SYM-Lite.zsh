@@ -655,6 +655,23 @@ function getAvailableInstallomatorLabels() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Validate Installomator Ownership (executed as root, so require root ownership and no group / other write bit)
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function validateInstallomatorOwnership() {
+    installomatorOwner=$( /usr/bin/stat -f '%Su' "${organizationInstallomatorFile}" 2>/dev/null )
+    installomatorMode=$( /usr/bin/stat -f '%Lp' "${organizationInstallomatorFile}" 2>/dev/null )
+
+    if [[ "${installomatorOwner}" != "root" || -z "${installomatorMode}" ]] || (( 8#${installomatorMode} & 8#022 )); then
+        return 1
+    fi
+
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Normalize Installomator Label Availability
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -698,12 +715,9 @@ function normalizeInstallomatorLabels() {
         return 0
     fi
 
-    # Executed as root, so require root ownership and no group / other write bit
     local installomatorOwner=""
     local installomatorMode=""
-    installomatorOwner=$( /usr/bin/stat -f '%Su' "${organizationInstallomatorFile}" 2>/dev/null )
-    installomatorMode=$( /usr/bin/stat -f '%Lp' "${organizationInstallomatorFile}" 2>/dev/null )
-    if [[ "${installomatorOwner}" != "root" || -z "${installomatorMode}" ]] || (( 8#${installomatorMode} & 8#022 )); then
+    if ! validateInstallomatorOwnership; then
         installomatorLabels=()
         warning "Installomator at ${organizationInstallomatorFile} is not root-owned or is group / other writable (${installomatorOwner}:${installomatorMode}); hiding Installomator labels for this run"
         return 0
