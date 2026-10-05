@@ -16,6 +16,22 @@
 #
 # HISTORY
 #
+# Version 1.3.0, 05-Oct-2026, Dan K. Snelson (@dan-snelson)
+# - Updated icon for Visual Studio Code
+# - Validated with Monocle
+# - Moved swiftDialog hand-off files into a root-owned per-run directory under `/var/tmp`; `quit:` now sent as the logged-in user
+# - Removed `/usr/local/bin` from `PATH`; swiftDialog and `jamf` now run from root-owned paths
+# - Added Installomator ownership and permissions check before executing labels
+# - Exits non-zero when any item fails so Jamf Pro reports failed runs
+# - `runAsUser` no longer re-runs failed commands
+# - Made Homebrew validation paths architecture-aware (Intel: `/usr/local`; Apple silicon: `/opt/homebrew`)
+# - Normalized and validated `operationMode` (Parameter 4)
+# - Hardened swiftDialog install / update checks (empty version, `installer` exit status, post-install version)
+# - Fixed home directory parsing for paths containing spaces
+# - Excluded `_mbsetupuser` and `root` as valid logged-in users
+# - Inspect Mode window now moveable and can be minimized via JSON `options` (swiftDialog 3.1.1+; ignored on 3.1.0)
+# - Restart prompt hides default keyboard actions to prevent accidental restarts (swiftDialog 3.1.1+)
+#
 # Version 1.2.0, 19-Aug-2026, Dan K. Snelson (@dan-snelson)
 # - Fixed validation of Installomator labels declared in multiline alias arms (Bug Report #16)
 # - Added `selectionDialogDefaultChecked` to configure default selection for interactive-mode items (while keeping already-installed items disabled and unchecked; thanks for FR #14, @jeffmw777!)
@@ -31,12 +47,12 @@
 #
 ####################################################################################################
 
-export PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.2.0"
+scriptVersion="1.3.0"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -67,6 +83,7 @@ autoload -Uz is-at-least
 
 # Runtime inputs (Jamf parameters by default; CLI flags can override)
 operationMode="${4:-"interactive"}"     # Parameter 4: Operation Mode [ interactive (default) | silent ]
+operationMode="${operationMode:l}"
 operationsCSV="${5:-""}"                # Parameter 5: Comma-separated list of item IDs for silent mode
 
 
@@ -82,7 +99,7 @@ organizationPreset="2"
 organizationInstallomatorFile="/Library/Application Support/AppAutoPatch/Installomator/Installomator.sh"
 
 # Organization's Jamf Binary Path
-jamfBinary="/usr/local/bin/jamf"
+jamfBinary="/usr/local/jamf/bin/jamf"
 
 # Optional Homebrew binary override (otherwise /opt/homebrew/bin/brew, then /usr/local/bin/brew)
 brewPath=""
@@ -116,6 +133,13 @@ restartPromptEnabled="true"
 # Item Configuration Arrays
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
+# Homebrew prefix for validation paths (`hw.optional.arm64` reads 1 on Apple silicon, even under Rosetta)
+if [[ "$( /usr/sbin/sysctl -in hw.optional.arm64 )" == "1" ]]; then
+    homebrewPrefix="/opt/homebrew"
+else
+    homebrewPrefix="/usr/local"
+fi
+
 # Installomator Labels
 # Format: "label | Display Name | Validation Path | Icon URL"
 installomatorLabels=(
@@ -127,7 +151,7 @@ installomatorLabels=(
     "docker | Docker | /Applications/Docker.app | https://usw2.ics.services.jamfcloud.com/icon/hash_a344dca5fdc0e86822e8f21ec91088e6591b1e292bdcebdee1281fbd794c2724"
     "jetbrainsintellijidea | IntelliJ IDEA | /Applications/IntelliJ IDEA.app | https://usw2.ics.services.jamfcloud.com/icon/hash_f669d73acc06297e1fc2f65245cfbdace03263f81aebf95444a8360a101b239d"
     "pique | Pique | /Applications/Pique.app | https://usw2.ics.services.jamfcloud.com/icon/hash_7d2539860cca6ec5ea5a71cba2aee7d93b9534e4267c16f73c7035f3dc025b9c"
-    "visualstudiocode | Visual Studio Code | /Applications/Visual Studio Code.app | https://use2.ics.services.jamfcloud.com/icon/hash_532094f99f6130f325a97ed6421d09d2a416e269f284304d39c21020565056ed"
+    "visualstudiocode | Visual Studio Code | /Applications/Visual Studio Code.app | https://appinstallers-packages.services.jamfcloud.com/icons/0AF.png"
 )
 
 configuredInstallomatorLabels=("${installomatorLabels[@]}")
@@ -136,7 +160,7 @@ configuredInstallomatorLabels=("${installomatorLabels[@]}")
 # Format: "trigger | Display Name | Validation Path | Icon URL"
 jamfPolicyItems=(
     "appleXcode | Xcode | /Applications/Xcode.app | https://usw2.ics.services.jamfcloud.com/icon/hash_583afb5af440479d642b3c35ec4ec3ad06c74ec814dba9af84e4e69202edf62a"
-    "homebrew | Homebrew | /opt/homebrew/bin/brew | https://usw2.ics.services.jamfcloud.com/icon/hash_9edff3eb98482a1aaf17f8560488f7b500cc7dc64955b8a9027b3801cab0fd82"
+    "homebrew | Homebrew | ${homebrewPrefix}/bin/brew | https://usw2.ics.services.jamfcloud.com/icon/hash_9edff3eb98482a1aaf17f8560488f7b500cc7dc64955b8a9027b3801cab0fd82"
 )
 
 configuredJamfPolicyItems=("${jamfPolicyItems[@]}")
@@ -144,9 +168,9 @@ configuredJamfPolicyItems=("${jamfPolicyItems[@]}")
 # Homebrew Items
 # Format: "cask:token | Display Name | Validation Path | Icon URL"
 homebrewItems=(
-    "cask:1password-cli | 1Password CLI | /opt/homebrew/bin/op | https://usw2.ics.services.jamfcloud.com/icon/hash_9456dcae0b68fa522a7b411e7ebd2f9062a1a60cb0681ab3cbad3dda64a410c6"
-    "cask:codex | codex-cli | /opt/homebrew/bin/codex | https://usw2.ics.services.jamfcloud.com/icon/hash_9d2a1b6f204d2a0d6e99dfc7a411edc0d269c1ab748514dcdde46ea7b4277e51"
-    "formula:direnv | direnv | /opt/homebrew/bin/direnv | https://usw2.ics.services.jamfcloud.com/icon/hash_a9a7557b3142dd165372a1e66bca2533c783723956f1415861eac6fd5058b588"
+    "cask:1password-cli | 1Password CLI | ${homebrewPrefix}/bin/op | https://usw2.ics.services.jamfcloud.com/icon/hash_9456dcae0b68fa522a7b411e7ebd2f9062a1a60cb0681ab3cbad3dda64a410c6"
+    "cask:codex | codex-cli | ${homebrewPrefix}/bin/codex | https://usw2.ics.services.jamfcloud.com/icon/hash_9d2a1b6f204d2a0d6e99dfc7a411edc0d269c1ab748514dcdde46ea7b4277e51"
+    "formula:direnv | direnv | ${homebrewPrefix}/bin/direnv | https://usw2.ics.services.jamfcloud.com/icon/hash_a9a7557b3142dd165372a1e66bca2533c783723956f1415861eac6fd5058b588"
 )
 
 configuredHomebrewItems=("${homebrewItems[@]}")
@@ -156,11 +180,14 @@ configuredHomebrewItems=("${homebrewItems[@]}")
 # swiftDialog Variables
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-# swiftDialog Binary Path
-dialogBinary="/usr/local/bin/dialog"
-
 # swiftDialog App Bundle
 dialogAppBundle="/Library/Application Support/Dialog/Dialog.app"
+
+# swiftDialog Binary Path (root-owned app bundle path; avoids /usr/local/bin, which may be user-owned on Intel Homebrew Macs)
+dialogBinary="${dialogAppBundle}/Contents/MacOS/dialogcli"
+
+# swiftDialog Runtime Directory (root-owned, 755; holds user hand-off files so they can't be swapped)
+dialogRuntimeDirectory=""
 
 # swiftDialog Inspect Mode JSON File
 dialogInspectModeJSONFile=""
@@ -235,6 +262,15 @@ function cleanup() {
                 ;;
         esac
     fi
+
+    if [[ -n "${dialogRuntimeDirectory}" && -d "${dialogRuntimeDirectory}" ]]; then
+        case "${dialogRuntimeDirectory}" in
+            /tmp/*|/var/tmp/*|/private/tmp/*)
+                rm -rf -- "${dialogRuntimeDirectory}" 2>/dev/null
+                dialogRuntimeDirectory=""
+                ;;
+        esac
+    fi
 }
 trap cleanup EXIT
 
@@ -260,7 +296,14 @@ function updateLoggedInUserDetails() {
     loggedInUserFullname=$( /usr/bin/id -F "${loggedInUser}" )
     loggedInUserFirstname=$( /bin/echo "${loggedInUserFullname}" | /usr/bin/sed -E 's/^.*, // ; s/([^ ]*).*/\1/' | /usr/bin/sed 's/\(.\{25\}\).*/\1…/' | /usr/bin/awk '{print ( $0 == toupper($0) ? toupper(substr($0,1,1))substr(tolower($0),2) : toupper(substr($0,1,1))substr($0,2) )}' )
     loggedInUserID=$( /usr/bin/id -u "${loggedInUser}" )
-    loggedInUserHomeDirectory=$( /usr/bin/dscl . read "/Users/${loggedInUser}" NFSHomeDirectory | /usr/bin/awk -F ' ' '{ print $2 }' )
+    loggedInUserHomeDirectory=$( /usr/bin/dscl -plist . read "/Users/${loggedInUser}" NFSHomeDirectory 2>/dev/null | /usr/bin/plutil -extract "dsAttrTypeStandard:NFSHomeDirectory.0" raw -o - - 2>/dev/null )
+}
+
+function isSystemConsoleUser() {
+    case "$1" in
+        ""|loginwindow|_mbsetupuser|root ) return 0 ;;
+        * ) return 1 ;;
+    esac
 }
 
 function requireLoggedInUser() {
@@ -268,7 +311,7 @@ function requireLoggedInUser() {
 
     currentLoggedInUser "false"
 
-    if [[ -z "${loggedInUser}" || "${loggedInUser}" == "loginwindow" ]]; then
+    if isSystemConsoleUser "${loggedInUser}"; then
         fatal "No valid logged-in GUI user detected; cannot ${context}."
     fi
 
@@ -287,7 +330,6 @@ function runAsUser() {
     local user="$1"
     shift
     local userID=""
-    local rc=0
 
     if [[ -z "${user}" ]]; then
         "$@"
@@ -297,8 +339,7 @@ function runAsUser() {
     userID="$(id -u "${user}" 2>/dev/null)"
     if [[ "${userID}" =~ ^[0-9]+$ ]]; then
         /bin/launchctl asuser "${userID}" /usr/bin/sudo -u "${user}" "$@"
-        rc=$?
-        [[ ${rc} -eq 0 ]] && return 0
+        return $?
     fi
 
     /usr/bin/sudo -u "${user}" "$@"
@@ -614,6 +655,23 @@ function getAvailableInstallomatorLabels() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Validate Installomator Ownership (executed as root, so require root ownership and no group / other write bit)
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function validateInstallomatorOwnership() {
+    installomatorOwner=$( /usr/bin/stat -f '%Su' "${organizationInstallomatorFile}" 2>/dev/null )
+    installomatorMode=$( /usr/bin/stat -f '%Lp' "${organizationInstallomatorFile}" 2>/dev/null )
+
+    if [[ "${installomatorOwner}" != "root" || -z "${installomatorMode}" ]] || (( 8#${installomatorMode} & 8#022 )); then
+        return 1
+    fi
+
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Normalize Installomator Label Availability
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -654,6 +712,14 @@ function normalizeInstallomatorLabels() {
     elif [[ ! -s "${organizationInstallomatorFile}" ]]; then
         installomatorLabels=()
         warning "Installomator at ${organizationInstallomatorFile} is zero bytes; hiding Installomator labels for this run"
+        return 0
+    fi
+
+    local installomatorOwner=""
+    local installomatorMode=""
+    if ! validateInstallomatorOwnership; then
+        installomatorLabels=()
+        warning "Installomator at ${organizationInstallomatorFile} is not root-owned or is group / other writable (${installomatorOwner}:${installomatorMode}); hiding Installomator labels for this run"
         return 0
     fi
 
@@ -726,7 +792,7 @@ function normalizeJamfPolicyItems() {
 function refreshHomebrewExecutionUser() {
     currentLoggedInUser "false"
 
-    if [[ -z "${loggedInUser}" || "${loggedInUser}" == "loginwindow" ]]; then
+    if isSystemConsoleUser "${loggedInUser}"; then
         return 1
     fi
 
@@ -1187,15 +1253,23 @@ function dialogInstall() {
     # Install the package if Team ID validates
     if [[ "$expectedDialogTeamID" == "$teamID" ]]; then
 
-        installer -pkg "${dialogTemporaryDirectory}/Dialog.pkg" -target /
+        if ! installer -pkg "${dialogTemporaryDirectory}/Dialog.pkg" -target /; then
+            rm -Rf "${dialogTemporaryDirectory}"
+            dialogTemporaryDirectory=""
+            fatal "swiftDialog package installation failed"
+        fi
         sleep 2
-        dialogVersion=$( /usr/local/bin/dialog --version )
+        dialogVersion=$( "${dialogBinary}" --version 2>/dev/null )
         preFlight "swiftDialog version ${dialogVersion} installed; proceeding..."
 
     else
 
-        # Display a so-called "simple" dialog if Team ID fails to validate
-        osascript -e 'display dialog "Please advise your Support Representative of the following error:\r\r• Dialog Team ID verification failed\r\r" with title "'"${humanReadableScriptName}"' Error" buttons {"Close"} with icon caution'
+        # Display a so-called "simple" dialog if Team ID fails to validate (as the logged-in user, when available)
+        currentLoggedInUser "false"
+        if isSystemConsoleUser "${loggedInUser}"; then
+            loggedInUser=""
+        fi
+        runAsUser "${loggedInUser}" /usr/bin/osascript -e 'display dialog "Please advise your Support Representative of the following error:\r\r• Dialog Team ID verification failed\r\r" with title "'"${humanReadableScriptName}"' Error" buttons {"Close"} with icon caution'
         exit "1"
 
     fi
@@ -1213,18 +1287,20 @@ function dialogCheck() {
 
         preFlight "swiftDialog not found; installing …"
         dialogInstall
-        if [[ ! -x "${dialogBinary}" ]]; then
+        dialogVersion=$( [[ -x "${dialogBinary}" ]] && "${dialogBinary}" --version 2>/dev/null )
+        if [[ -z "${dialogVersion}" ]] || ! is-at-least "${swiftDialogMinimumRequiredVersion}" "${dialogVersion}"; then
             fatal "swiftDialog still not found; are downloads from GitHub blocked on this Mac?"
         fi
 
     else
 
-        dialogVersion=$("${dialogBinary}" --version)
-        if ! is-at-least "${swiftDialogMinimumRequiredVersion}" "${dialogVersion}"; then
+        dialogVersion=$( [[ -x "${dialogBinary}" ]] && "${dialogBinary}" --version 2>/dev/null )
+        if [[ -z "${dialogVersion}" ]] || ! is-at-least "${swiftDialogMinimumRequiredVersion}" "${dialogVersion}"; then
 
-            preFlight "swiftDialog version ${dialogVersion} found but swiftDialog ${swiftDialogMinimumRequiredVersion} or newer is required; updating …"
+            preFlight "swiftDialog version '${dialogVersion}' found but swiftDialog ${swiftDialogMinimumRequiredVersion} or newer is required; updating …"
             dialogInstall
-            if [[ ! -x "${dialogBinary}" ]]; then
+            dialogVersion=$( [[ -x "${dialogBinary}" ]] && "${dialogBinary}" --version 2>/dev/null )
+            if [[ -z "${dialogVersion}" ]] || ! is-at-least "${swiftDialogMinimumRequiredVersion}" "${dialogVersion}"; then
                 fatal "Unable to update swiftDialog; are downloads from GitHub blocked on this Mac?"
             fi
 
@@ -1248,19 +1324,40 @@ function formattedElapsedTime() {
     /usr/bin/printf '%dh:%dm:%ds\n' $((SECONDS/3600)) $((SECONDS%3600/60)) $((SECONDS%60))
 }
 
+# Root-owned (755) per-run directory: the logged-in user can own and read hand-off files inside it,
+# but can't delete or replace them with symlinks (as they could in sticky /var/tmp)
+function createDialogRuntimeDirectory() {
+    if [[ -n "${dialogRuntimeDirectory}" && -d "${dialogRuntimeDirectory}" ]]; then
+        return 0
+    fi
+
+    dialogRuntimeDirectory=$( /usr/bin/mktemp -d "/var/tmp/${organizationScriptName}.XXXXXX" )
+    if [[ -z "${dialogRuntimeDirectory}" || ! -d "${dialogRuntimeDirectory}" ]]; then
+        fatal "Failed to create Dialog runtime directory"
+    fi
+
+    if ! /bin/chmod 755 "${dialogRuntimeDirectory}" 2>/dev/null; then
+        fatal "Failed to set permissions on Dialog runtime directory"
+    fi
+
+    info "Dialog runtime directory created at ${dialogRuntimeDirectory}"
+}
+
 function createDialogCommandFile() {
-    dialogCommandFile=$( /usr/bin/mktemp "/var/tmp/dialogCommandFile_${organizationScriptName}.XXXXXX" )
-    if [[ -z "${dialogCommandFile}" || ! -e "${dialogCommandFile}" ]]; then
+    createDialogRuntimeDirectory
+
+    dialogCommandFile="${dialogRuntimeDirectory}/commandFile"
+    if ! : > "${dialogCommandFile}" 2>/dev/null; then
         fatal "Failed to create Dialog command file"
     fi
 
     if [[ -n "${loggedInUser}" ]]; then
-        if ! /usr/sbin/chown "${loggedInUser}" "${dialogCommandFile}" 2>/dev/null; then
-            fatal "Failed to set ownership on Dialog command file for ${loggedInUser}."
-        fi
-
         if ! /bin/chmod 600 "${dialogCommandFile}" 2>/dev/null; then
             fatal "Failed to set permissions on Dialog command file for ${loggedInUser}."
+        fi
+
+        if ! /usr/sbin/chown "${loggedInUser}" "${dialogCommandFile}" 2>/dev/null; then
+            fatal "Failed to set ownership on Dialog command file for ${loggedInUser}."
         fi
     fi
 
@@ -1282,7 +1379,7 @@ function closeInspectMode() {
 
     if [[ -n "${dialogCommandFile}" && -e "${dialogCommandFile}" ]]; then
         info "Requesting Inspect Mode to quit via command file (${reason})"
-        /bin/echo "quit:" >> "${dialogCommandFile}" 2>/dev/null || warning "Failed to write quit command to Dialog command file"
+        runAsUser "${loggedInUser}" /bin/sh -c '/bin/echo "quit:" >> "$1"' _ "${dialogCommandFile}" 2>/dev/null || warning "Failed to write quit command to Dialog command file"
     fi
 
     if [[ -n "${dialogPID}" ]]; then
@@ -1381,6 +1478,11 @@ fi
 
 preFlight "Running as root; proceeding …"
 
+case "${operationMode}" in
+    interactive|silent ) ;;
+    * ) fatal "Invalid operationMode '${operationMode}'; expected 'interactive' or 'silent'" ;;
+esac
+
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -1416,7 +1518,7 @@ if [[ "${operationMode}" != "silent" ]]; then
     preFlight "Check for Logged-in System Accounts …"
     currentLoggedInUser
 
-    until [[ -n "${loggedInUser}" && "${loggedInUser}" != "loginwindow" ]]; do
+    until ! isSystemConsoleUser "${loggedInUser}"; do
         if [[ "${counter}" -ge "${maxWait}" ]]; then
             fatal "No valid user logged in after ${maxWait} seconds; exiting."
         fi
@@ -1507,8 +1609,10 @@ function createSYMLiteInspectConfig() {
     local hasJamf="false"
     local hasHomebrew="false"
 
-    dialogInspectModeJSONFile=$( /usr/bin/mktemp "/var/tmp/dialogJSONFile_InspectMode_${organizationScriptName}.XXXXXX" )
-    if [[ -z "${dialogInspectModeJSONFile}" || ! -e "${dialogInspectModeJSONFile}" ]]; then
+    createDialogRuntimeDirectory
+
+    dialogInspectModeJSONFile="${dialogRuntimeDirectory}/inspectConfig.json"
+    if ! : > "${dialogInspectModeJSONFile}" 2>/dev/null; then
         fatal "Failed to create Dialog inspect config file"
     fi
     
@@ -1632,6 +1736,10 @@ function createSYMLiteInspectConfig() {
     "overlayicon": "$(escapeJSONString "${organizationOverlayiconURL}")",
     "iconsize": 120,
     "size": "compact",
+    "options": {
+        "moveable": true,
+        "windowbuttons": "min"
+    },
 ${logMonitorJSON}
     "cachePaths": [
 ${cachePathsJSON}
@@ -1679,12 +1787,12 @@ function prepareInspectConfigForUser() {
         fatal "No logged-in user available to receive Dialog inspect config."
     fi
 
-    if ! /usr/sbin/chown "${loggedInUser}" "${dialogInspectModeJSONFile}" 2>/dev/null; then
-        fatal "Failed to set ownership on Dialog inspect config for ${loggedInUser}."
-    fi
-
     if ! /bin/chmod 600 "${dialogInspectModeJSONFile}" 2>/dev/null; then
         fatal "Failed to set permissions on Dialog inspect config for ${loggedInUser}."
+    fi
+
+    if ! /usr/sbin/chown "${loggedInUser}" "${dialogInspectModeJSONFile}" 2>/dev/null; then
+        fatal "Failed to set ownership on Dialog inspect config for ${loggedInUser}."
     fi
 
     info "Dialog inspect config handed off to ${loggedInUser}."
@@ -1699,12 +1807,12 @@ function prepareCompletionDialogConfigForUser() {
         fatal "No logged-in user available to receive completion dialog config."
     fi
 
-    if ! /usr/sbin/chown "${loggedInUser}" "${completionDialogJSONFile}" 2>/dev/null; then
-        fatal "Failed to set ownership on completion dialog config for ${loggedInUser}."
-    fi
-
     if ! /bin/chmod 600 "${completionDialogJSONFile}" 2>/dev/null; then
         fatal "Failed to set permissions on completion dialog config for ${loggedInUser}."
+    fi
+
+    if ! /usr/sbin/chown "${loggedInUser}" "${completionDialogJSONFile}" 2>/dev/null; then
+        fatal "Failed to set ownership on completion dialog config for ${loggedInUser}."
     fi
 
     info "Completion dialog config handed off to ${loggedInUser}."
@@ -1860,8 +1968,8 @@ function parseDialogSelections() {
         local itemID=""
 
         for itemID in "${selectionDialogOptionRecords[@]}"; do
-            if command -v jq >/dev/null 2>&1; then
-                if echo "${output}" | jq -e --arg key "${itemID}" '.[$key] == true' >/dev/null 2>&1; then
+            if [[ -x /usr/bin/jq ]]; then
+                if echo "${output}" | /usr/bin/jq -e --arg key "${itemID}" '.[$key] == true' >/dev/null 2>&1; then
                     selectedItems+=("${itemID}")
                 fi
                 continue
@@ -1889,9 +1997,9 @@ function parseDialogSelections() {
     done
 
     # Fallback: JSON-aware jq parsing if grep found nothing
-    if [[ ${#selectedItems[@]} -eq 0 ]] && command -v jq >/dev/null 2>&1; then
+    if [[ ${#selectedItems[@]} -eq 0 ]] && [[ -x /usr/bin/jq ]]; then
         for itemID in "${allIDs[@]}"; do
-            if echo "${output}" | jq -e --arg key "${itemID}" '.[$key] == true' >/dev/null 2>&1; then
+            if echo "${output}" | /usr/bin/jq -e --arg key "${itemID}" '.[$key] == true' >/dev/null 2>&1; then
                 selectedItems+=("${itemID}")
             fi
         done
@@ -1917,7 +2025,7 @@ function showNoSelectableItemsDialog() {
         messageText="All configured items are already installed, so there is nothing new to process right now."
     fi
 
-    ${dialogBinary} \
+    "${dialogBinary}" \
         --title "${humanReadableScriptName}" \
         --infotext "${scriptVersion}" \
         --messagefont "size=${fontSize}" \
@@ -1978,7 +2086,7 @@ function showSelectionDialog() {
             messageText="${messageText}\n\n**${warningMessage}**"
         fi
 
-        dialogOutput="$(${dialogBinary} \
+        dialogOutput="$("${dialogBinary}" \
             --title "${humanReadableScriptName}" \
             --infotext "${scriptVersion}" \
             --messagefont "size=${fontSize}" \
@@ -2476,8 +2584,11 @@ function showCompletionDialog() {
 
     listItemsJSON=$(buildCompletionReportListItemsJSON)
 
-    completionDialogJSONFile="$(mktemp "/var/tmp/dialogJSONFile_Completion_${organizationScriptName}.XXXXXX")"
-    if [[ -z "${completionDialogJSONFile}" ]]; then
+    createDialogRuntimeDirectory
+
+    completionDialogJSONFile="${dialogRuntimeDirectory}/completionConfig.json"
+    if ! : > "${completionDialogJSONFile}" 2>/dev/null; then
+        completionDialogJSONFile=""
         fatal "Failed to create completion dialog JSON file"
     fi
 
@@ -2573,13 +2684,14 @@ function promptForRestart() {
     local rc
     local restartFontSize=$(( fontSize > 2 ? fontSize - 2 : fontSize ))
     
-    ${dialogBinary} \
+    "${dialogBinary}" \
         --title "Restart Recommended" \
         --infotext "${scriptVersion}" \
         --messagefont "size=${restartFontSize}" \
         --message "**A restart may be recommended after installing software or applying these changes.**\n\nWould you like to restart now?" \
         --icon "SF=restart.circle.fill,colour=#969899" \
         --buttonstyle "stack" \
+        --hidedefaultkeyboardaction \
         --button1text "Restart Now" \
         --button2text "Later" \
         --height 400 \
@@ -2642,4 +2754,10 @@ else
 fi
 
 info "SYM-Lite execution complete - Total Elapsed Time: $(formattedElapsedTime)"
+
+if [[ ${#failedItems[@]} -gt 0 ]]; then
+    errorOut "${#failedItems[@]} item(s) failed: ${(j:, :)failedItems}"
+    quitScript 1
+fi
+
 quitScript 0
