@@ -32,11 +32,6 @@
 # - Inspect Mode window now moveable and can be minimized via JSON `options` (swiftDialog 3.1.1+; ignored on 3.1.0)
 # - Restart prompt hides default keyboard actions to prevent accidental restarts (swiftDialog 3.1.1+)
 #
-# Version 1.2.0, 19-Aug-2026, Dan K. Snelson (@dan-snelson)
-# - Fixed validation of Installomator labels declared in multiline alias arms (Bug Report #16)
-# - Added `selectionDialogDefaultChecked` to configure default selection for interactive-mode items (while keeping already-installed items disabled and unchecked; thanks for FR #14, @jeffmw777!)
-# - Updated `codex` Validation Path
-#
 ####################################################################################################
 
 
