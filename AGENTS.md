@@ -115,9 +115,12 @@ Out of scope:
 - Homebrew user is pinned in `normalizeHomebrewItems()` (`homebrewExecutionUser`); a mid-run console-user change fails remaining Homebrew items.
 - `validationPath` drives both pre-execution skip logic and Inspect Mode completion detection; wrong path can suppress needed work or hide completion.
 - Interactive mode needs active logged-in GUI user and exits after wait window if none appears.
+- `operationsCSV` (Parameter 5) is dual-purpose: silent mode runs listed items; interactive mode uses non-empty value as selection dialog allowlist (`selectionDialogAllowedItemIDs`). `operationsCSVIsEmpty()` treats separator-only or quoted-empty input as empty (show all); zero valid IDs shows "No selectable items" dialog, never full list.
 - Homebrew execution runs in logged-in user context even though script itself runs as root; all brew commands set `HOMEBREW_NO_SUDO=1` so nothing blocks on a password prompt.
 - Non-admin logged-in users get casks in `~/Applications` (`--appdir`); `resolveHomebrewValidationPath()` maps `/Applications/…` validation paths to either location.
 - `homebrewAutoRemoveQuarantine` (default `false`) strips `com.apple.quarantine` only from cask `.app` validation paths, only after `spctl` accepts, and runs `xattr` as logged-in user (never root); wrong `validationPath` silently skips it.
+- `ensureHomebrewCompletionDirectories()` creates `share/zsh/site-functions` and `share/fish/vendor_completions.d` under `${effectiveBrewPath:h:h}` once per run as the Homebrew user when `homebrewCreateCompletionDirectories` is `true` (default); brew's completion child process gets EPERM creating them itself.
+- `executeHomebrewItem()` scans brew output for child-process exceptions, `Operation not permitted`, and `Permission denied`; on exit `0` it logs `[WARNING]` and reports "Ready to use; Homebrew reported warnings" (item still counts as completed).
 - Jamf and Homebrew completion remain path-based, not rich progress parsed.
 
 ## Repository Rules

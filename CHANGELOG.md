@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.5.1 - 06-Oct-2026
+- Homebrew installs that exit 0 but report child-process or permission errors (e.g., shell completions under `${homebrewPrefix}/share`) now log a `[WARNING]` and show "Ready to use; Homebrew reported warnings" (Issue #24)
+- Before the first Homebrew install of each run, SYM-Lite creates `share/zsh/site-functions` and `share/fish/vendor_completions.d` under the brew prefix as the Homebrew user, because brew's completion child process can't create them; disable with `homebrewCreateCompletionDirectories="false"` (Issue #24)
+
+## 1.5.0 - 06-Oct-2026
+- Interactive mode honors a non-empty `operationsCSV` (Parameter 5) as a selection dialog allowlist; an empty value still shows all items (FR #23)
+- Interactive mode shows the "No selectable items" dialog (after logging valid item IDs) when `operationsCSV` contains no valid item IDs
+
 ## 1.4.0 - 06-Oct-2026
 - Added Homebrew casks: Claude CLI (`claude-code`), Mem AI (`mem`), Soulver AI (`soulver`), WPS Office (`wpsoffice`)
 - Added Installomator labels: Firefox ESR (`firefoxesr`), Nova (`nova`), Otter AI (`otter`)
