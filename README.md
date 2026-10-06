@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite) [![swiftDialog](https://img.shields.io/badge/swiftDialog-Enabled-blue)](https://swiftdialog.app) [![Semgrep Security Scan](https://img.shields.io/badge/security%20scanned%20by-Semgrep-00C7B7?style=flat&logo=semgrep&logoColor=white)](https://semgrep.dev)
 
-# SYM-Lite (1.3.0)
+# SYM-Lite (1.4.0)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) and [Homebrew](https://brew.sh) casks / formulas, as well as Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies), all through a unified [swiftDialog](https://swiftdialog.app) selection and reporting interface.
 
@@ -73,6 +73,12 @@ installomatorLabels=(
 
 At runtime, SYM-Lite validates each configured label against single-line and continued top-level alias arms in `organizationInstallomatorFile` before building the picker or accepting silent-mode CSV input. If a label is missing from that Installomator file, or if the Installomator file is unavailable, unreadable, or cannot be parsed, SYM-Lite logs a warning or error and removes Installomator labels from the current run while leaving other item types available.
 
+Because root executes Installomator, `organizationInstallomatorFile` must be an absolute path that is not a symlink, and the file and every parent directory up to `/` must be owned by `root` with no group or other write bit. SYM-Lite checks this during pre-flight (hiding Installomator labels on failure) and again immediately before each label runs (failing that item). The default App Auto-Patch location meets this requirement.
+
+**Notes on bundled labels:**
+- `firefoxesr` installs `Firefox.app`, so it shares `/Applications/Firefox.app` with regular Firefox and shows as "Already installed" on Macs that already have Firefox
+- `otter` requires an Installomator build that includes the `otter` label; older builds hide the item and log an error each run
+
 ### Adding Homebrew Items
 
 Edit the `homebrewItems` array near the top of `SYM-Lite.zsh`:
@@ -98,6 +104,11 @@ homebrewItems=(
 - Homebrew examples and default validation paths in this repo assume Apple silicon with Homebrew installed in `/opt/homebrew`
 - Homebrew items are hidden for the current run if no working `brew` binary is available
 - Homebrew items also require a valid logged-in user because package installs run in user context rather than as `root`
+- Third-party tap items use fully-qualified tokens (e.g., `formula:hashicorp/tap/terraform`); when `homebrewAutoTrustItems="true"`, SYM-Lite runs `brew trust` for that item before install (official taps are always trusted)
+- If the logged-in user is not a local administrator, casks install to `~/Applications` (validation paths under `/Applications/` also match `~/Applications/`)
+- Homebrew runs with `HOMEBREW_NO_SUDO=1`; casks needing `sudo` (e.g., `pkg`-based installers) fail fast and report "Requires administrator rights" rather than prompting for a password
+- Validation paths use `${homebrewPrefix}` (`/opt/homebrew` on Apple silicon, `/usr/local` on Intel); pre-flight warns when the detected or configured `brew` lives under a different prefix, because skip and completion checks may then be wrong
+- The Homebrew user is pinned during pre-flight; if the console user changes mid-run, remaining Homebrew items fail instead of running as the new user
 
 ### Adding Jamf Policy Items
 
@@ -131,6 +142,8 @@ When Jamf policy items are disabled:
 - Jamf policy items do not execute
 - Jamf binary pre-flight validation is skipped
 - Silent mode warns and skips Jamf item IDs in the CSV input
+
+If Jamf policy items are enabled but the Jamf binary is missing at `jamfBinary`, pre-flight logs a warning and removes Jamf policy items from the run; silent mode warns and skips their IDs in the CSV input.
 
 ### Disabling Homebrew Items
 
@@ -196,7 +209,7 @@ If SYM-Lite reports an unknown item ID, compare Parameter 5 against the identifi
 - No restart prompt
 - Same pre-flight checks still run, including `swiftDialog` validation / installation
 - Installomator labels filtered out during pre-flight validation are warned and skipped in the CSV input
-- If Jamf policy items are disabled, Jamf item IDs in the CSV are warned and skipped
+- If Jamf policy items are disabled or the Jamf binary is missing, Jamf item IDs in the CSV are warned and skipped
 - If Homebrew items are disabled or unavailable for the current run, Homebrew item IDs in the CSV are warned and skipped
 - Exits with an error if the CSV contains no valid item IDs
 - Suitable for automated deployment
@@ -228,12 +241,13 @@ PRE-FLIGHT CHECKS
   ├─ Normalize Installomator labels
   ├─ Normalize Homebrew item availability and detect brew path
   ├─ Normalize Jamf item availability from configuration
-  ├─ Verify Jamf binary (if enabled and items configured)
+  ├─ Verify Jamf binary (if enabled and items configured; removes Jamf items when missing)
+  ├─ Warn on item IDs configured in more than one item array
        ↓
 SELECTION INTERFACE
   ├─ Show dialog (interactive) or parse CSV (silent)
   ├─ Validate at least one selection
-  └─ Separate items by type (Installomator → Homebrew → Jamf)
+  └─ Collect selected item IDs (interactive: display-name order; silent: CSV order)
        ↓
 INSPECT MODE CONFIGURATION
   ├─ Interactive mode only
@@ -245,7 +259,7 @@ INSPECT MODE CONFIGURATION
 EXECUTION ENGINE
   ├─ Interactive mode launches Inspect Mode dialog (background)
   │   └─ Silent mode logs progress without UI
-  ├─ Process items sequentially (Installomator → Homebrew → Jamf)
+  ├─ Process items sequentially in selection order
   │   ├─ Installomator: executeInstallomatorLabel()
   │   ├─ Homebrew: executeHomebrewItem()
   │   └─ Jamf: executeJamfPolicy()
@@ -254,7 +268,7 @@ EXECUTION ENGINE
        ↓
 COMPLETION & RESTART
   ├─ Interactive mode shows a completion report for selected items
-  └─ Interactive mode prompts for restart (if enabled and something was newly installed)
+  └─ Interactive mode prompts for restart (if enabled and something was newly installed); "Restart Now" asks `loginwindow` to restart as the logged-in user, so apps can prompt to save
 ```
 
 ---
@@ -299,15 +313,18 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 
 ### Installomator Items
 1. Pre-check: If validation path exists → skip
-2. Execute: `Installomator.sh <label>` with `DEBUG=0 NOTIFY=silent`
-3. Inspect Mode: Log parsing + path monitoring
-4. Post-check: Exit code determines success/failure
+2. Re-check Installomator ownership and permissions (fails the item if the check no longer passes)
+3. Execute: `Installomator.sh <label>` with `DEBUG=0 NOTIFY=silent`
+4. Inspect Mode: Log parsing + path monitoring
+5. Post-check: Exit code determines success/failure
 
 ### Homebrew Items
 1. Pre-check: If validation path exists → skip
-2. Execute: `brew install` (or `--cask`) as the logged-in user
-3. Inspect Mode: Path monitoring only
-4. Post-check: Exit code + path validation
+2. Trust: `brew trust` for configured third-party tap items (`user/tap/name`) when `homebrewAutoTrustItems="true"`
+3. Execute: `brew install` (or `--cask`; adds `--appdir=~/Applications` for non-admin users) as the logged-in user with `HOMEBREW_NO_SUDO=1`
+4. Inspect Mode: Path monitoring only
+5. Post-check: Exit code + path validation
+6. Quarantine (optional): when `homebrewAutoRemoveQuarantine="true"` and the cask validation path is an `.app`, run `spctl --assess --type execute`; only if Gatekeeper accepts, remove `com.apple.quarantine` as the logged-in user (`xattr -drs`) so first launch skips the "downloaded from the Internet" prompt
 
 ### Jamf Policy Items
 1. Pre-check: If validation path exists → skip
@@ -324,23 +341,25 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 | `organizationPreset` | `"2"` | swiftDialog Inspect Mode preset (1-4) |
 | `organizationInstallomatorFile` | `/Library/Application Support/AppAutoPatch/Installomator/Installomator.sh` | Path to Installomator.sh |
 | `installomatorLog` | `/var/log/Installomator.log` | Installomator log path for monitoring |
-| `jamfBinary` | `/usr/local/bin/jamf` | Path to jamf binary |
+| `jamfBinary` | `/usr/local/jamf/bin/jamf` | Path to jamf binary |
 | `enableJamfPolicyItems` | `"true"` | Show and execute Jamf policy items |
 | `brewPath` | `""` | Optional Homebrew binary override |
 | `enableHomebrewItems` | `"true"` | Show and execute Homebrew cask/formula items |
 | `homebrewUpdateBeforeInstall` | `"false"` | Run `brew update` once before the first Homebrew package install |
+| `homebrewAutoTrustItems` | `"true"` | Run `brew trust` for configured third-party tap items (`user/tap/name`) before install |
+| `homebrewAutoRemoveQuarantine` | `"false"` | After a cask install, remove `com.apple.quarantine` from its `.app` validation path, only when Gatekeeper accepts the app |
 | `organizationOverlayiconURL` | swiftDialog logo | Overlay icon URL |
 | `mainDialogIcon` | GitHub raw `SYM_icon.png` URL | Main dialog icon |
 | `fontSize` | `"14"` | Dialog message font size |
 | `selectionDialogDefaultChecked` | `"true"` | Start selectable interactive-mode items checked |
 | `selectionDialogStatusSublabelsEnabled` | `"true"` | Show install-state sublabels, disable already-installed items, and exit cleanly if no selectable items remain |
 | `restartPromptEnabled` | `"true"` | Show restart prompt after completion |
-| `scriptLog` | `/var/log/...log` | Client-side log path |
+| `scriptLog` | `/var/log/...log` | Client-side log path (created `0640`; rotated at 10 MB, keeping the three newest `.old` files) |
+
+Item IDs must be unique across `installomatorLabels`, `jamfPolicyItems`, and `homebrewItems`; pre-flight warns on duplicates, and the first match (Installomator, then Jamf, then Homebrew) wins.
 
 ---
 
-(The rest of the document — Logging, Troubleshooting, Testing Checklist, Next Steps, and Support — remains unchanged as the reordering was already applied where relevant.)
-
-**Version:** 1.3.0  
-**Date:** 19-Aug-2026  
+**Version:** 1.4.0  
+**Date:** 06-Oct-2026  
 **Author:** Dan K. Snelson (@dan-snelson)

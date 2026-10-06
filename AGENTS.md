@@ -35,6 +35,7 @@ Invoke relevant skill name during planning.
 3. Set real `validationPath`; skip logic and Inspect Mode completion depend on it.
 4. Validate affected parsing and execution flow in `SYM-Lite.zsh`.
 5. Update `README.md` if user-visible configuration or behavior changed.
+6. Add item to `HISTORY` and matching `CHANGELOG.md` entry.
 
 ### Runtime Flow Change Skill
 1. Identify all touched functions with `rg`.
@@ -109,9 +110,14 @@ Out of scope:
 ## Current Runtime Hotspots
 - `dialogCheck()` always runs in pre-flight and can auto-install or update swiftDialog from GitHub; blocked network breaks bootstrap.
 - Installomator availability is optional for each run; missing or unparsable Installomator filters those labels instead of aborting Jamf or Homebrew execution.
+- `validateInstallomatorOwnership()` walks `organizationInstallomatorFile` up to `/` (root-owned, no group/other write, no symlinked file) in pre-flight and again before each label runs.
+- Missing Jamf binary empties `jamfPolicyItems` in pre-flight; do not reintroduce `/usr/local/bin/jamf` (user-writable on Intel Homebrew Macs).
+- Homebrew user is pinned in `normalizeHomebrewItems()` (`homebrewExecutionUser`); a mid-run console-user change fails remaining Homebrew items.
 - `validationPath` drives both pre-execution skip logic and Inspect Mode completion detection; wrong path can suppress needed work or hide completion.
 - Interactive mode needs active logged-in GUI user and exits after wait window if none appears.
-- Homebrew execution runs in logged-in user context even though script itself runs as root.
+- Homebrew execution runs in logged-in user context even though script itself runs as root; all brew commands set `HOMEBREW_NO_SUDO=1` so nothing blocks on a password prompt.
+- Non-admin logged-in users get casks in `~/Applications` (`--appdir`); `resolveHomebrewValidationPath()` maps `/Applications/…` validation paths to either location.
+- `homebrewAutoRemoveQuarantine` (default `false`) strips `com.apple.quarantine` only from cask `.app` validation paths, only after `spctl` accepts, and runs `xattr` as logged-in user (never root); wrong `validationPath` silently skips it.
 - Jamf and Homebrew completion remain path-based, not rich progress parsed.
 
 ## Repository Rules
@@ -121,7 +127,8 @@ Out of scope:
 - Preserve existing script style unless strong reason exists to refactor.
 - Keep `installomatorLabels`, `jamfPolicyItems`, and `homebrewItems` sorted by display-name intent.
 - If behavior, configuration semantics, or environment assumptions change, update `README.md` in same pass.
-- `CHANGELOG.md` is long-term history for released versions.
+- `CHANGELOG.md` is long-term history; keep its top entry in sync with `scriptVersion` and `HISTORY`.
+- When `SYM-Lite.zsh` `HISTORY` changes, add or update matching `CHANGELOG.md` entry in same pass.
 - `SYM-Lite.zsh` `HISTORY` section should describe current version under development only.
 - Check `git status` before editing shared docs so unrelated local work is not overwritten.
 
@@ -148,7 +155,7 @@ Match established `SYM-Lite.zsh` style unless user explicitly asks otherwise.
 - Effective minimum OS support is macOS 15 because repo requires swiftDialog 3.x.
 - Minimum swiftDialog version is `3.1.0.4994`.
 - Default Installomator path: `/Library/Application Support/AppAutoPatch/Installomator/Installomator.sh`
-- Default Jamf binary path: `/usr/local/bin/jamf`
+- Default Jamf binary path: `/usr/local/jamf/bin/jamf`
 - Homebrew detection prefers `/opt/homebrew/bin/brew`, then `/usr/local/bin/brew`
 - Default logging paths: `/var/log/org.churchofjesuschrist.log` and `/var/log/Installomator.log`
 
@@ -164,7 +171,7 @@ Match established `SYM-Lite.zsh` style unless user explicitly asks otherwise.
 2. For script changes, review touched paths for obvious regressions in both `interactive` and `silent` flows.
 3. For docs-only changes, review Markdown rendering, terminology, and cross-file consistency.
 4. Update `README.md` when behavior, configuration, environment assumptions, or operator workflow changes.
-5. Update `CHANGELOG.md` only for released-version history or when task explicitly includes release-note work.
+5. Update `CHANGELOG.md` whenever `scriptVersion` or `HISTORY` changes; top entry must mirror current `HISTORY`.
 6. Do not add new production dependencies without explicit approval.
 
 ## Release Checklist

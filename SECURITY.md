@@ -8,7 +8,7 @@ This project is a **macOS-only, root-run** workflow that can execute Installomat
 
 Only the **latest release** is actively supported for security updates.
 
-- Current stable/beta reference: [v1.0.0](https://github.com/Setup-Your-Mac/SYM-Lite/releases) (and newer)
+- Current stable/beta reference: [v1.4.0](https://github.com/Setup-Your-Mac/SYM-Lite/releases) (and newer)
 - Older releases receive no security patches
 
 Use the newest release whenever possible, especially in Jamf Pro or other MDM-managed deployments.
@@ -42,7 +42,7 @@ You should receive an acknowledgment within **48 hours**. We will work with you 
 - Run the script only from trusted sources and within controlled management workflows
 - Keep configured item lists intentionally scoped to approved software and actions
 - In `silent` mode, double-check Parameter 5 or direct CSV input because there is no selection UI confirmation
-- Validate the paths and ownership of downstream dependencies such as `organizationInstallomatorFile`, `jamfBinary`, and `brewPath`
+- Validate the paths and ownership of downstream dependencies such as `organizationInstallomatorFile`, `jamfBinary`, and `brewPath`; SYM-Lite refuses to run Installomator unless the file and every parent directory are root-owned and not group / other writable
 - Prefer official or organization-controlled sources for `swiftDialog`, Installomator, Jamf content, Homebrew packages, and remote icons
 - Scope Jamf policies carefully and communicate clearly with end users when installs or restarts may be disruptive
 - Review `/var/log/org.churchofjesuschrist.log` and related downstream logs when investigating unexpected behavior

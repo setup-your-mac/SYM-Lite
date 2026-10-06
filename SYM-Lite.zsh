@@ -16,21 +16,22 @@
 #
 # HISTORY
 #
-# Version 1.3.0, 05-Oct-2026, Dan K. Snelson (@dan-snelson)
-# - Updated icon for Visual Studio Code
-# - Validated with Monocle
-# - Moved swiftDialog hand-off files into a root-owned per-run directory under `/var/tmp`; `quit:` now sent as the logged-in user
-# - Removed `/usr/local/bin` from `PATH`; swiftDialog and `jamf` now run from root-owned paths
-# - Added Installomator ownership and permissions check before executing labels
-# - Exits non-zero when any item fails so Jamf Pro reports failed runs
-# - `runAsUser` no longer re-runs failed commands
-# - Made Homebrew validation paths architecture-aware (Intel: `/usr/local`; Apple silicon: `/opt/homebrew`)
-# - Normalized and validated `operationMode` (Parameter 4)
-# - Hardened swiftDialog install / update checks (empty version, `installer` exit status, post-install version)
-# - Fixed home directory parsing for paths containing spaces
-# - Excluded `_mbsetupuser` and `root` as valid logged-in users
-# - Inspect Mode window now moveable and can be minimized via JSON `options` (swiftDialog 3.1.1+; ignored on 3.1.0)
-# - Restart prompt hides default keyboard actions to prevent accidental restarts (swiftDialog 3.1.1+)
+# Version 1.4.0, 06-Oct-2026, Dan K. Snelson (@dan-snelson)
+# - Added Homebrew casks: Claude CLI (`claude-code`), Mem AI (`mem`), Soulver AI (`soulver`), WPS Office (`wpsoffice`)
+# - Added Installomator labels: Firefox ESR (`firefoxesr`), Nova (`nova`), Otter AI (`otter`)
+# - Added Homebrew auto-trust: configured third-party tap items (`user/tap/name`) are trusted via `brew trust` before install (`homebrewAutoTrustItems`)
+# - Added optional Homebrew cask quarantine removal (`homebrewAutoRemoveQuarantine`, default `false`): after install, `com.apple.quarantine` is removed as the logged-in user only when Gatekeeper accepts the app
+# - Homebrew casks install to `~/Applications` when the logged-in user is not a local administrator; validation accepts `/Applications` or `~/Applications`
+# - Homebrew commands run with `HOMEBREW_NO_SUDO=1` so steps requiring `sudo` fail fast (reported as "Requires administrator rights") instead of hanging on a password prompt
+# - Consolidated Homebrew command environment into `setHomebrewCommandEnvironment()`
+# - Installomator ownership check now covers every parent directory, rejects symlinked or relative paths, and re-runs immediately before each label executes
+# - swiftDialog bootstrap requires Gatekeeper acceptance as a notarized Developer ID package before trusting the Team ID
+# - Jamf policy items are removed from the run when the Jamf binary is missing; silent mode reports "Jamf binary unavailable"
+# - Pre-flight warns when the Homebrew binary prefix does not match the validation prefix
+# - Homebrew user is pinned for the run; a mid-run console-user change fails remaining Homebrew items instead of installing as a different user
+# - Client log created `0640`; log rotation keeps only the three newest `.old` files
+# - Pre-flight warns when an item ID is configured in more than one item array
+# - Removed unreachable root `shutdown -r now` restart branch; "Restart Now" restarts only via `loginwindow` as the logged-in user and warns (instead of exiting) if no user is logged in
 #
 ####################################################################################################
 
@@ -47,7 +48,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.3.0"
+scriptVersion="1.4.0"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -108,6 +109,12 @@ enableHomebrewItems="true"
 # Update Homebrew metadata once before the first Homebrew package install
 homebrewUpdateBeforeInstall="false"
 
+# Trust configured third-party tap items (`user/tap/name`) before install; official taps are always trusted
+homebrewAutoTrustItems="true"
+
+# Remove Apple's quarantine flag from installed Homebrew cask apps (only when Gatekeeper accepts the app)
+homebrewAutoRemoveQuarantine="false"
+
 # Organization's Overlayicon URL
 organizationOverlayiconURL="https://swiftdialog.app/_astro/dialog_logo.CZF0LABZ_ZjWz8w.webp"
 
@@ -144,7 +151,11 @@ installomatorLabels=(
     "charles | Charles Proxy | /Applications/Charles.app | https://use2.ics.services.jamfcloud.com/icon/hash_59b395ca81889a6d83deda8e6babc5ae4bc5931d36a72b738fe30b84d027593d"
     "codex | OpenAI ChatGPT Codex | /Applications/ChatGPT.localized/ChatGPT.app | https://usw2.ics.services.jamfcloud.com/icon/hash_be9d2917e81980484f875d9056e5e4aa45d59dffa7b03c20f8dbb5137e96ee26"
     "docker | Docker | /Applications/Docker.app | https://usw2.ics.services.jamfcloud.com/icon/hash_a344dca5fdc0e86822e8f21ec91088e6591b1e292bdcebdee1281fbd794c2724"
+    "firefoxesr | Firefox ESR | /Applications/Firefox.app | https://appinstallers-packages.services.jamfcloud.com/icons/0B3.png"
+    "homebrew | Homebrew | ${homebrewPrefix}/bin/brew | https://usw2.ics.services.jamfcloud.com/icon/hash_9edff3eb98482a1aaf17f8560488f7b500cc7dc64955b8a9027b3801cab0fd82"
     "jetbrainsintellijidea | IntelliJ IDEA | /Applications/IntelliJ IDEA.app | https://usw2.ics.services.jamfcloud.com/icon/hash_f669d73acc06297e1fc2f65245cfbdace03263f81aebf95444a8360a101b239d"
+    "nova | Nova | /Applications/Nova.app | https://use1.ics.services.jamfcloud.com/icon/hash_2386d11c960c252a4db75f49b5e82e5ba7adc1394a446e6ce11a91227d842c37"
+    "otter | Otter AI | /Applications/Otter.app | https://use1.ics.services.jamfcloud.com/icon/hash_c53dfc2bc61084eec32f9825e57f836b181c2d9fb85ba5a9693ab11bc6f9ec31"
     "pique | Pique | /Applications/Pique.app | https://usw2.ics.services.jamfcloud.com/icon/hash_7d2539860cca6ec5ea5a71cba2aee7d93b9534e4267c16f73c7035f3dc025b9c"
     "visualstudiocode | Visual Studio Code | /Applications/Visual Studio Code.app | https://appinstallers-packages.services.jamfcloud.com/icons/0AF.png"
 )
@@ -155,7 +166,6 @@ configuredInstallomatorLabels=("${installomatorLabels[@]}")
 # Format: "trigger | Display Name | Validation Path | Icon URL"
 jamfPolicyItems=(
     "appleXcode | Xcode | /Applications/Xcode.app | https://usw2.ics.services.jamfcloud.com/icon/hash_583afb5af440479d642b3c35ec4ec3ad06c74ec814dba9af84e4e69202edf62a"
-    "homebrew | Homebrew | ${homebrewPrefix}/bin/brew | https://usw2.ics.services.jamfcloud.com/icon/hash_9edff3eb98482a1aaf17f8560488f7b500cc7dc64955b8a9027b3801cab0fd82"
 )
 
 configuredJamfPolicyItems=("${jamfPolicyItems[@]}")
@@ -164,8 +174,12 @@ configuredJamfPolicyItems=("${jamfPolicyItems[@]}")
 # Format: "cask:token | Display Name | Validation Path | Icon URL"
 homebrewItems=(
     "cask:1password-cli | 1Password CLI | ${homebrewPrefix}/bin/op | https://usw2.ics.services.jamfcloud.com/icon/hash_9456dcae0b68fa522a7b411e7ebd2f9062a1a60cb0681ab3cbad3dda64a410c6"
+    "cask:claude-code | Claude CLI | ${homebrewPrefix}/bin/claude | https://appinstallers-packages.services.jamfcloud.com/icons/6DC.png"
     "cask:codex | codex-cli | ${homebrewPrefix}/bin/codex | https://usw2.ics.services.jamfcloud.com/icon/hash_9d2a1b6f204d2a0d6e99dfc7a411edc0d269c1ab748514dcdde46ea7b4277e51"
     "formula:direnv | direnv | ${homebrewPrefix}/bin/direnv | https://usw2.ics.services.jamfcloud.com/icon/hash_a9a7557b3142dd165372a1e66bca2533c783723956f1415861eac6fd5058b588"
+    "cask:mem | Mem AI | /Applications/Mem.app | https://use1.ics.services.jamfcloud.com/icon/hash_62e0fba2609b56b27ddaafa0c4add4d0b2ce372094ad12f6b8a05f2bfe2cc236"
+    "cask:soulver | Soulver AI | /Applications/Soulver 3.app | https://use1.ics.services.jamfcloud.com/icon/hash_d6c332f220193ed32f94839dde785921185b4ecc4de6687b5ef9d7a0add42dca"
+    "cask:wpsoffice | WPS Office | /Applications/wpsoffice.app | https://use1.ics.services.jamfcloud.com/icon/hash_ed541f6a4ce8422f9230153519391cb9095744d2e459e1baa3453df4dab5db5b"
 )
 
 configuredHomebrewItems=("${homebrewItems[@]}")
@@ -214,6 +228,9 @@ selectionDialogCheckboxesJSON=""
 effectiveBrewPath=""
 homebrewUpdateAttempted="false"
 homebrewUpdateSucceeded="false"
+homebrewCommandEnvironment=()
+loggedInUserIsAdmin=""
+homebrewExecutionUser=""
 
 
 
@@ -413,8 +430,37 @@ function parseHomebrewItem() {
     itemBrewMode="${itemHomebrewID%%:*}"
     itemBrewToken="${itemHomebrewID#*:}"
     itemDisplayName="${parts[2]}"
-    itemValidationPath="${parts[3]}"
+    itemValidationPath="$(resolveHomebrewValidationPath "${parts[3]}")"
     itemIconURL="${parts[4]}"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Resolve Homebrew Validation Path
+# Input: Configured validation path
+# Output: Effective validation path on stdout; `/Applications/…` paths also match `~/Applications/…`,
+#         which is where casks install for non-admin users
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function resolveHomebrewValidationPath() {
+    local validationPath="$1"
+    local userValidationPath=""
+
+    if [[ "${validationPath}" != /Applications/* || -z "${loggedInUserHomeDirectory}" ]]; then
+        print -r -- "${validationPath}"
+        return 0
+    fi
+
+    userValidationPath="${loggedInUserHomeDirectory}${validationPath}"
+
+    if [[ -e "${validationPath}" ]]; then
+        print -r -- "${validationPath}"
+    elif [[ -e "${userValidationPath}" || "${loggedInUserIsAdmin}" == "false" ]]; then
+        print -r -- "${userValidationPath}"
+    else
+        print -r -- "${validationPath}"
+    fi
 }
 
 
@@ -650,16 +696,37 @@ function getAvailableInstallomatorLabels() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Validate Installomator Ownership (executed as root, so require root ownership and no group / other write bit)
+# Validate Installomator Ownership (executed as root, so require an absolute, non-symlinked path that is
+# root-owned with no group / other write bit at every level up to `/`)
+# Sets: installomatorCheckPath, installomatorOwner, installomatorMode (describe the first failing level)
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 function validateInstallomatorOwnership() {
-    installomatorOwner=$( /usr/bin/stat -f '%Su' "${organizationInstallomatorFile}" 2>/dev/null )
-    installomatorMode=$( /usr/bin/stat -f '%Lp' "${organizationInstallomatorFile}" 2>/dev/null )
+    installomatorCheckPath="${organizationInstallomatorFile}"
+    installomatorOwner=""
+    installomatorMode=""
 
-    if [[ "${installomatorOwner}" != "root" || -z "${installomatorMode}" ]] || (( 8#${installomatorMode} & 8#022 )); then
+    if [[ "${installomatorCheckPath}" != /* ]]; then
+        installomatorOwner="relative path"
         return 1
     fi
+
+    if [[ -L "${installomatorCheckPath}" ]]; then
+        installomatorOwner="symlink"
+        return 1
+    fi
+
+    while true; do
+        installomatorOwner=$( /usr/bin/stat -f '%Su' "${installomatorCheckPath}" 2>/dev/null )
+        installomatorMode=$( /usr/bin/stat -f '%Lp' "${installomatorCheckPath}" 2>/dev/null )
+
+        if [[ "${installomatorOwner}" != "root" || -z "${installomatorMode}" ]] || (( 8#${installomatorMode} & 8#022 )); then
+            return 1
+        fi
+
+        [[ "${installomatorCheckPath}" == "/" ]] && break
+        installomatorCheckPath="${installomatorCheckPath:h}"
+    done
 
     return 0
 }
@@ -710,11 +777,12 @@ function normalizeInstallomatorLabels() {
         return 0
     fi
 
+    local installomatorCheckPath=""
     local installomatorOwner=""
     local installomatorMode=""
     if ! validateInstallomatorOwnership; then
         installomatorLabels=()
-        warning "Installomator at ${organizationInstallomatorFile} is not root-owned or is group / other writable (${installomatorOwner}:${installomatorMode}); hiding Installomator labels for this run"
+        warning "Installomator path ${installomatorCheckPath} is not root-owned, is group / other writable, or is a symlink (${installomatorOwner}:${installomatorMode}); hiding Installomator labels for this run"
         return 0
     fi
 
@@ -781,11 +849,18 @@ function normalizeJamfPolicyItems() {
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Refresh Homebrew Execution User
-# Returns: 0 if a resolvable logged-in user is available, 1 otherwise
+# Returns: 0 if a resolvable logged-in user is available (and matches the user pinned for this run), 1 otherwise
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 function refreshHomebrewExecutionUser() {
     currentLoggedInUser "false"
+
+    # Never run Homebrew as a different user than the one resolved during pre-flight
+    if [[ -n "${homebrewExecutionUser}" && "${loggedInUser}" != "${homebrewExecutionUser}" ]]; then
+        errorOut "Console user changed from ${homebrewExecutionUser} to ${loggedInUser}; not running Homebrew as a different user"
+        loggedInUser="${homebrewExecutionUser}"
+        return 1
+    fi
 
     if isSystemConsoleUser "${loggedInUser}"; then
         return 1
@@ -796,6 +871,14 @@ function refreshHomebrewExecutionUser() {
     fi
 
     updateLoggedInUserDetails
+
+    # Non-admin users can't write to /Applications, so Homebrew would prompt for sudo
+    if /usr/sbin/dseditgroup -o checkmember -m "${loggedInUser}" admin >/dev/null 2>&1; then
+        loggedInUserIsAdmin="true"
+    else
+        loggedInUserIsAdmin="false"
+    fi
+
     return 0
 }
 
@@ -876,6 +959,10 @@ function normalizeHomebrewItems() {
     effectiveBrewPath="${detectedBrewPath}"
     preFlight "Homebrew binary found at ${effectiveBrewPath}"
 
+    if [[ "${effectiveBrewPath:h:h}" != "${homebrewPrefix}" ]]; then
+        warning "Homebrew binary ${effectiveBrewPath} does not match validation prefix ${homebrewPrefix}; skip and completion checks for Homebrew items may be wrong"
+    fi
+
     if ! refreshHomebrewExecutionUser; then
         warning "No logged-in user is available to run Homebrew; hiding Homebrew items from this run"
         homebrewItems=()
@@ -883,7 +970,13 @@ function normalizeHomebrewItems() {
         return 0
     fi
 
-    preFlight "Homebrew items will run as ${loggedInUser}"
+    homebrewExecutionUser="${loggedInUser}"
+
+    if [[ "${loggedInUserIsAdmin}" == "false" ]]; then
+        preFlight "Homebrew items will run as ${loggedInUser} (non-admin; casks install to ~/Applications; steps requiring sudo fail fast)"
+    else
+        preFlight "Homebrew items will run as ${loggedInUser}"
+    fi
 
     for item in "${configuredHomebrewItems[@]}"; do
         parseHomebrewItem "${item}"
@@ -1014,6 +1107,36 @@ function getAllItemIDsCSV() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Warn on Duplicate Item IDs
+# getItemType() returns the first match (Installomator, then Jamf, then Homebrew), so an ID configured
+# in more than one array always resolves to the earlier type
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function warnDuplicateItemIDs() {
+    local -A seenItemIDs=()
+    local item=""
+    local itemID=""
+    local itemSource=""
+    local -a parts=()
+
+    for itemSource in configuredInstallomatorLabels configuredJamfPolicyItems configuredHomebrewItems; do
+        for item in "${(@P)itemSource}"; do
+            parts=("${(@s: | :)item}")
+            itemID="${parts[1]}"
+            [[ -z "${itemID}" ]] && continue
+
+            if [[ -n "${seenItemIDs[${itemID}]}" ]]; then
+                warning "Item ID '${itemID}' is configured in both ${seenItemIDs[${itemID}]} and ${itemSource}; only the ${seenItemIDs[${itemID}]} entry will be used"
+            else
+                seenItemIDs[${itemID}]="${itemSource}"
+            fi
+        done
+    done
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Get Item Type
 # Input: Item ID
 # Output: "installomator" or "jamf" or empty string if not found
@@ -1135,6 +1258,22 @@ function getHomebrewCacheDirectory() {
     fi
 }
 
+# Shared `env` prefix for every brew command run as the logged-in user
+# HOMEBREW_NO_SUDO=1 makes brew fail instead of prompting for a password (e.g., non-admin or EPM-managed sudo)
+function setHomebrewCommandEnvironment() {
+    homebrewCommandEnvironment=(
+        /usr/bin/env
+        HOME="${loggedInUserHomeDirectory}"
+        USER="${loggedInUser}"
+        LOGNAME="${loggedInUser}"
+        XDG_CACHE_HOME="${loggedInUserHomeDirectory}/Library/Caches"
+        HOMEBREW_CACHE="$(getHomebrewCacheDirectory)"
+        NONINTERACTIVE=1
+        HOMEBREW_NO_SUDO=1
+        HOMEBREW_NO_ENV_HINTS=1
+    )
+}
+
 function isValidationPathPresent() {
     local validationPath="$1"
 
@@ -1242,8 +1381,15 @@ function dialogInstall() {
         fatal "Failed to download swiftDialog package"
     fi
 
-    # Verify the download
-    teamID=$(spctl -a -vv -t install "${dialogTemporaryDirectory}/Dialog.pkg" 2>&1 | awk '/origin=/ {print $NF }' | tr -d '()')
+    # Verify the download (require Gatekeeper acceptance and notarization before trusting the Team ID)
+    local spctlOutput
+    spctlOutput=$( spctl -a -vv -t install "${dialogTemporaryDirectory}/Dialog.pkg" 2>&1 )
+    teamID=""
+    if [[ "${spctlOutput}" == *": accepted"* && "${spctlOutput}" == *"source=Notarized Developer ID"* ]]; then
+        teamID=$( print -r -- "${spctlOutput}" | awk '/origin=/ {print $NF }' | tr -d '()' )
+    else
+        warning "swiftDialog package was not accepted by Gatekeeper as a notarized Developer ID package"
+    fi
 
     # Install the package if Team ID validates
     if [[ "$expectedDialogTeamID" == "$teamID" ]]; then
@@ -1432,6 +1578,7 @@ function quitScript() {
 if [[ ! -f "${scriptLog}" ]]; then
     /usr/bin/touch "${scriptLog}"
     if [[ -f "${scriptLog}" ]]; then
+        /bin/chmod 640 "${scriptLog}"
         preFlight "Created specified scriptLog: ${scriptLog}"
     else
         fatal "Unable to create specified scriptLog '${scriptLog}'; exiting.\n\n(Is this script running as 'root' ?)"
@@ -1445,8 +1592,15 @@ maxLogSize=$((10 * 1024 * 1024))  # 10MB
 if (( logSize > maxLogSize )); then
     preFlight "Log file exceeds ${maxLogSize} bytes; rotating"
     if /bin/mv "${scriptLog}" "${scriptLog}.$(/bin/date +%s).old" 2>/dev/null; then
-        /usr/bin/touch "${scriptLog}"
+        /usr/bin/touch "${scriptLog}" && /bin/chmod 640 "${scriptLog}"
         preFlight "Log file rotated"
+
+        # Keep only the three newest rotated logs
+        rotatedLogs=( "${scriptLog}".*.old(N.Om) )
+        if (( ${#rotatedLogs} > 3 )); then
+            /bin/rm -f -- "${(@)rotatedLogs[1,-4]}"
+            preFlight "Removed $(( ${#rotatedLogs} - 3 )) older rotated log(s)"
+        fi
     else
         warning "Unable to rotate log file"
     fi
@@ -1566,10 +1720,19 @@ if [[ ${#jamfPolicyItems[@]} -gt 0 ]]; then
     if [[ ! -x "${jamfBinary}" ]]; then
         warning "Jamf binary not found at ${jamfBinary}"
         warning "Jamf policy items will be skipped"
+        jamfPolicyItems=()
     else
         preFlight "Jamf binary found at ${jamfBinary}"
     fi
 fi
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Pre-flight Check: Duplicate Item IDs
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+warnDuplicateItemIDs
 
 
 
@@ -1931,6 +2094,8 @@ function parseOperationsCSV() {
                 warning "Skipping CSV item '${itemID}': Installomator label is unavailable in ${organizationInstallomatorFile}"
             elif [[ "${enableJamfPolicyItems:l}" != "true" ]] && isConfiguredJamfPolicyItem "${itemID}"; then
                 warning "Skipping CSV item '${itemID}': Jamf policy items are disabled"
+            elif [[ ! -x "${jamfBinary}" ]] && isConfiguredJamfPolicyItem "${itemID}"; then
+                warning "Skipping CSV item '${itemID}': Jamf binary unavailable at ${jamfBinary}"
             elif [[ "${enableHomebrewItems:l}" != "true" ]] && isConfiguredHomebrewItem "${itemID}"; then
                 warning "Skipping CSV item '${itemID}': Homebrew items are disabled"
             elif isConfiguredHomebrewItem "${itemID}"; then
@@ -2161,7 +2326,10 @@ function executeInstallomatorLabel() {
     local displayName="$3"
     local iconURL="$4"
     local installomatorExitCode
-    
+    local installomatorCheckPath=""
+    local installomatorOwner=""
+    local installomatorMode=""
+
     # Check if already installed
     if [[ -n "${validationPath}" && -e "${validationPath}" ]]; then
         info "Skipping '${label}': ${validationPath} already exists"
@@ -2169,9 +2337,17 @@ function executeInstallomatorLabel() {
         addCompletionReportRecord "${displayName}" "alreadyInstalled" "success" "${iconURL}" "No action was needed" "Already installed"
         return 0
     fi
-    
+
+    # Re-check ownership immediately before root executes Installomator (pre-flight check may be minutes old)
+    if ! validateInstallomatorOwnership; then
+        errorOut "Installomator path ${installomatorCheckPath} failed ownership re-check (${installomatorOwner}:${installomatorMode}); not running '${label}'"
+        failedItems+=("${displayName}")
+        addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "Please contact support if this app is required" "Not installed"
+        return 1
+    fi
+
     notice "Installing '${label}' (${displayName}) …"
-    
+
     # Execute Installomator
     "${organizationInstallomatorFile}" "${label}" \
         DEBUG=0 NOTIFY=silent 2>&1 | while IFS= read -r installomatorOutputLine; do
@@ -2251,7 +2427,6 @@ function executeJamfPolicy() {
 
 function updateHomebrewMetadataIfNeeded() {
     local homebrewUpdateExitCode=0
-    local homebrewCacheDirectory=""
 
     if [[ "${homebrewUpdateBeforeInstall:l}" != "true" ]]; then
         return 0
@@ -2265,22 +2440,15 @@ function updateHomebrewMetadataIfNeeded() {
     homebrewUpdateAttempted="true"
 
     if ! refreshHomebrewExecutionUser; then
-        errorOut "No logged-in user is available to update Homebrew metadata"
+        errorOut "The Homebrew user for this run is not logged in; cannot update Homebrew metadata"
         homebrewUpdateSucceeded="false"
         return 1
     fi
 
-    homebrewCacheDirectory="$(getHomebrewCacheDirectory)"
+    setHomebrewCommandEnvironment
 
     notice "Updating Homebrew metadata as ${loggedInUser} …"
-    runAsUser "${loggedInUser}" /usr/bin/env \
-        HOME="${loggedInUserHomeDirectory}" \
-        USER="${loggedInUser}" \
-        LOGNAME="${loggedInUser}" \
-        XDG_CACHE_HOME="${loggedInUserHomeDirectory}/Library/Caches" \
-        HOMEBREW_CACHE="${homebrewCacheDirectory}" \
-        NONINTERACTIVE=1 \
-        HOMEBREW_NO_ENV_HINTS=1 \
+    runAsUser "${loggedInUser}" "${homebrewCommandEnvironment[@]}" \
         "${effectiveBrewPath}" update 2>&1 | while IFS= read -r homebrewOutputLine; do
         logComment "Homebrew (update): ${homebrewOutputLine}"
     done
@@ -2300,6 +2468,103 @@ function updateHomebrewMetadataIfNeeded() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Trust Homebrew Item (Optional)
+# Input: Homebrew item ID, brew mode (cask|formula), brew token
+# Only fully-qualified third-party tokens (`user/tap/name`) need trust; official taps are always trusted
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function trustHomebrewItemIfNeeded() {
+    local homebrewID="$1"
+    local brewMode="$2"
+    local brewToken="$3"
+    local homebrewTrustExitCode=0
+
+    if [[ "${homebrewAutoTrustItems:l}" != "true" ]]; then
+        return 0
+    fi
+
+    if [[ ! "${brewToken}" =~ ^[^/]+/[^/]+/[^/]+$ || "${brewToken:l}" == homebrew/* ]]; then
+        return 0
+    fi
+
+    setHomebrewCommandEnvironment
+
+    info "Trusting Homebrew ${brewMode} '${brewToken}' for ${loggedInUser} …"
+    runAsUser "${loggedInUser}" "${homebrewCommandEnvironment[@]}" \
+        "${effectiveBrewPath}" trust "--${brewMode}" "${brewToken}" 2>&1 | while IFS= read -r homebrewOutputLine; do
+        logComment "Homebrew (trust:${homebrewID}): ${homebrewOutputLine}"
+    done
+    homebrewTrustExitCode=${pipestatus[1]}
+
+    if [[ ${homebrewTrustExitCode} -ne 0 ]]; then
+        warning "Homebrew trust failed for '${homebrewID}' (exit code: ${homebrewTrustExitCode}); attempting install anyway"
+        return 1
+    fi
+
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Remove Homebrew Quarantine (Optional)
+# Input: Homebrew item ID, brew mode (cask|formula), resolved validation path
+# Only cask `.app` bundles; quarantine is removed as the logged-in user only after Gatekeeper accepts the app
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function removeHomebrewQuarantineIfNeeded() {
+    local homebrewID="$1"
+    local brewMode="$2"
+    local targetPath="$3"
+    local gatekeeperAssessment=""
+    local gatekeeperExitCode=0
+    local quarantineExitCode=0
+
+    if [[ "${homebrewAutoRemoveQuarantine:l}" != "true" ]]; then
+        return 0
+    fi
+
+    if [[ "${brewMode}" != "cask" || "${targetPath}" != *.app ]]; then
+        return 0
+    fi
+
+    if [[ -L "${targetPath}" || ! -d "${targetPath}" ]]; then
+        warning "Not removing quarantine for '${homebrewID}': ${targetPath} is not an app bundle directory"
+        return 1
+    fi
+
+    if ! /usr/bin/xattr -p com.apple.quarantine "${targetPath}" >/dev/null 2>&1; then
+        info "No quarantine flag on ${targetPath}"
+        return 0
+    fi
+
+    gatekeeperAssessment="$( /usr/sbin/spctl --assess --type execute --verbose=2 "${targetPath}" 2>&1 )"
+    gatekeeperExitCode=$?
+
+    if [[ ${gatekeeperExitCode} -ne 0 ]]; then
+        warning "Gatekeeper rejected '${homebrewID}' (${targetPath}); quarantine kept: ${gatekeeperAssessment//$'\n'/ }"
+        return 1
+    fi
+
+    info "Gatekeeper accepted '${homebrewID}': ${gatekeeperAssessment//$'\n'/ }"
+
+    runAsUser "${loggedInUser}" /usr/bin/xattr -drs com.apple.quarantine "${targetPath}" 2>&1 | while IFS= read -r quarantineOutputLine; do
+        logComment "Homebrew (quarantine:${homebrewID}): ${quarantineOutputLine}"
+    done
+    quarantineExitCode=${pipestatus[1]}
+
+    if [[ ${quarantineExitCode} -ne 0 ]]; then
+        warning "Quarantine removal failed for '${homebrewID}' (exit code: ${quarantineExitCode})"
+        return 1
+    fi
+
+    info "Removed quarantine flag from ${targetPath}"
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Execute Homebrew Item
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -2311,7 +2576,8 @@ function executeHomebrewItem() {
     local displayName="$5"
     local iconURL="$6"
     local homebrewExitCode=0
-    local homebrewCacheDirectory=""
+    local homebrewSudoBlocked="false"
+    local userApplicationsDirectory=""
     local -a brewCommand=()
 
     if [[ -n "${validationPath}" && -e "${validationPath}" ]]; then
@@ -2329,13 +2595,11 @@ function executeHomebrewItem() {
     fi
 
     if ! refreshHomebrewExecutionUser; then
-        errorOut "Homebrew item '${homebrewID}' cannot run because no logged-in user is available"
+        errorOut "Homebrew item '${homebrewID}' cannot run because the Homebrew user for this run is not logged in"
         failedItems+=("${displayName}")
-        addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "A logged-in user is required for Homebrew installs" "Not installed"
+        addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "The same user must stay logged in for Homebrew installs" "Not installed"
         return 1
     fi
-
-    homebrewCacheDirectory="$(getHomebrewCacheDirectory)"
 
     if ! updateHomebrewMetadataIfNeeded; then
         failedItems+=("${displayName}")
@@ -2343,55 +2607,53 @@ function executeHomebrewItem() {
         return 1
     fi
 
-    notice "Installing Homebrew ${brewMode} '${brewToken}' (${displayName}) as ${loggedInUser} …"
+    trustHomebrewItemIfNeeded "${homebrewID}" "${brewMode}" "${brewToken}"
+
+    setHomebrewCommandEnvironment
+    brewCommand=(
+        "${homebrewCommandEnvironment[@]}"
+        HOMEBREW_NO_AUTO_UPDATE=1
+        "${effectiveBrewPath}"
+        install
+    )
 
     if [[ "${brewMode}" == "cask" ]]; then
-        brewCommand=(
-            /usr/bin/env
-            HOME="${loggedInUserHomeDirectory}"
-            USER="${loggedInUser}"
-            LOGNAME="${loggedInUser}"
-            XDG_CACHE_HOME="${loggedInUserHomeDirectory}/Library/Caches"
-            HOMEBREW_CACHE="${homebrewCacheDirectory}"
-            NONINTERACTIVE=1
-            HOMEBREW_NO_AUTO_UPDATE=1
-            HOMEBREW_NO_ENV_HINTS=1
-            "${effectiveBrewPath}"
-            install
-            --cask
-            "${brewToken}"
-        )
-    else
-        brewCommand=(
-            /usr/bin/env
-            HOME="${loggedInUserHomeDirectory}"
-            USER="${loggedInUser}"
-            LOGNAME="${loggedInUser}"
-            XDG_CACHE_HOME="${loggedInUserHomeDirectory}/Library/Caches"
-            HOMEBREW_CACHE="${homebrewCacheDirectory}"
-            NONINTERACTIVE=1
-            HOMEBREW_NO_AUTO_UPDATE=1
-            HOMEBREW_NO_ENV_HINTS=1
-            "${effectiveBrewPath}"
-            install
-            "${brewToken}"
-        )
+        brewCommand+=(--cask)
+
+        # Non-admin users can't write to /Applications; install apps to ~/Applications instead of prompting for sudo
+        if [[ "${loggedInUserIsAdmin}" == "false" ]]; then
+            userApplicationsDirectory="${loggedInUserHomeDirectory}/Applications"
+            runAsUser "${loggedInUser}" /bin/mkdir -p "${userApplicationsDirectory}"
+            brewCommand+=("--appdir=${userApplicationsDirectory}")
+            info "${loggedInUser} is not an administrator; installing '${brewToken}' to ${userApplicationsDirectory}"
+        fi
     fi
+
+    brewCommand+=("${brewToken}")
+
+    notice "Installing Homebrew ${brewMode} '${brewToken}' (${displayName}) as ${loggedInUser} …"
 
     runAsUser "${loggedInUser}" "${brewCommand[@]}" 2>&1 | while IFS= read -r homebrewOutputLine; do
         logComment "Homebrew (${homebrewID}): ${homebrewOutputLine}"
+        [[ "${homebrewOutputLine}" == *HOMEBREW_NO_SUDO* ]] && homebrewSudoBlocked="true"
     done
     homebrewExitCode=${pipestatus[1]}
 
     if [[ ${homebrewExitCode} -ne 0 ]]; then
-        errorOut "Homebrew install failed for '${homebrewID}' (exit code: ${homebrewExitCode})"
         failedItems+=("${displayName}")
-        addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "Please contact support if this package is required" "Not installed"
+        if [[ "${homebrewSudoBlocked}" == "true" ]]; then
+            errorOut "Homebrew install failed for '${homebrewID}' (exit code: ${homebrewExitCode}); package requires administrator privileges"
+            addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "Requires administrator rights; please contact support" "Not installed"
+        else
+            errorOut "Homebrew install failed for '${homebrewID}' (exit code: ${homebrewExitCode})"
+            addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "Please contact support if this package is required" "Not installed"
+        fi
         return 1
     fi
 
     if [[ -n "${validationPath}" && -e "${validationPath}" ]]; then
         info "Homebrew install completed for '${homebrewID}' and validated"
+        removeHomebrewQuarantineIfNeeded "${homebrewID}" "${brewMode}" "${validationPath}"
         completedItems+=("${displayName}")
         addCompletionReportRecord "${displayName}" "installed" "success" "${iconURL}" "Ready to use" "Installed"
         return 0
@@ -2643,30 +2905,22 @@ EOF
 # Restart Helpers
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
+# Restarts only through loginwindow as the logged-in user, so apps can prompt to save and the user can cancel
 function executeRestartAction() {
-    local effectiveRestartMode="${1:-${restartMode}}"
-    local restartCommand=""
+    currentLoggedInUser "false"
 
-    case "${effectiveRestartMode}" in
-        Restart)
-            restartCommand="sleep 1 && shutdown -r now &"
-            if /bin/zsh -c "${restartCommand}" >>"${scriptLog}" 2>&1; then
-                notice "Restart command '${effectiveRestartMode}' sent as root: ${restartCommand}"
-                return 0
-            fi
-            warning "Failed to invoke restart command '${effectiveRestartMode}' as root: ${restartCommand}"
-            return 1
-            ;;
-        "Restart Confirm"|*)
-            requireLoggedInUser "send restart command"
-            if runAsUser "${loggedInUser}" /usr/bin/osascript -e 'tell app "loginwindow" to «event aevtrrst»' >>"${scriptLog}" 2>&1; then
-                notice "Restart command '${effectiveRestartMode}' sent for ${loggedInUser}."
-                return 0
-            fi
-            warning "Failed to invoke restart command '${effectiveRestartMode}' for ${loggedInUser}."
-            return 1
-            ;;
-    esac
+    if isSystemConsoleUser "${loggedInUser}" || ! /usr/bin/id -u "${loggedInUser}" >/dev/null 2>&1; then
+        warning "No valid logged-in GUI user detected; restart command 'Restart Confirm' not sent."
+        return 1
+    fi
+
+    if runAsUser "${loggedInUser}" /usr/bin/osascript -e 'tell app "loginwindow" to «event aevtrrst»' >>"${scriptLog}" 2>&1; then
+        notice "Restart command 'Restart Confirm' sent for ${loggedInUser}."
+        return 0
+    fi
+
+    warning "Failed to invoke restart command 'Restart Confirm' for ${loggedInUser}."
+    return 1
 }
 
 function promptForRestart() {
@@ -2696,7 +2950,7 @@ function promptForRestart() {
     
     if [[ ${rc} -eq 0 ]]; then
         notice "User chose to restart now"
-        executeRestartAction "Restart Confirm"
+        executeRestartAction
     else
         notice "User chose to restart later"
     fi
