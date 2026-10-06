@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite) [![swiftDialog](https://img.shields.io/badge/swiftDialog-Enabled-blue)](https://swiftdialog.app) [![Semgrep Security Scan](https://img.shields.io/badge/security%20scanned%20by-Semgrep-00C7B7?style=flat&logo=semgrep&logoColor=white)](https://semgrep.dev)
 
-# SYM-Lite (1.5.0)
+# SYM-Lite (1.5.1)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) and [Homebrew](https://brew.sh) casks / formulas, as well as Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies), all through a unified [swiftDialog](https://swiftdialog.app) selection and reporting interface.
 
@@ -107,6 +107,8 @@ homebrewItems=(
 - Third-party tap items use fully-qualified tokens (e.g., `formula:hashicorp/tap/terraform`); when `homebrewAutoTrustItems="true"`, SYM-Lite runs `brew trust` for that item before install (official taps are always trusted)
 - If the logged-in user is not a local administrator, casks install to `~/Applications` (validation paths under `/Applications/` also match `~/Applications/`)
 - Homebrew runs with `HOMEBREW_NO_SUDO=1`; casks needing `sudo` (e.g., `pkg`-based installers) fail fast and report "Requires administrator rights" rather than prompting for a password
+- When `homebrewCreateCompletionDirectories="true"` (default), before the first Homebrew install of each run, SYM-Lite creates `share/zsh/site-functions` and `share/fish/vendor_completions.d` under the brew prefix as the Homebrew user (never `root`); brew's completion child process can write into these directories but can't create them, so cask shell completions would otherwise fail with `Operation not permitted`
+- If `brew` exits `0` but its output reports a child-process exception, `Operation not permitted`, or `Permission denied` (e.g., cask shell completions under `${homebrewPrefix}/share` failing even though the Homebrew user owns the prefix), SYM-Lite logs a `[WARNING]` and reports "Ready to use; Homebrew reported warnings"; the installed command or app still works, only extras such as shell completions may be missing
 - Validation paths use `${homebrewPrefix}` (`/opt/homebrew` on Apple silicon, `/usr/local` on Intel); pre-flight warns when the detected or configured `brew` lives under a different prefix, because skip and completion checks may then be wrong
 - The Homebrew user is pinned during pre-flight; if the console user changes mid-run, remaining Homebrew items fail instead of running as the new user
 
@@ -340,11 +342,12 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 
 ### Homebrew Items
 1. Pre-check: If validation path exists → skip
-2. Trust: `brew trust` for configured third-party tap items (`user/tap/name`) when `homebrewAutoTrustItems="true"`
-3. Execute: `brew install` (or `--cask`; adds `--appdir=~/Applications` for non-admin users) as the logged-in user with `HOMEBREW_NO_SUDO=1`
-4. Inspect Mode: Path monitoring only
-5. Post-check: Exit code + path validation
-6. Quarantine (optional): when `homebrewAutoRemoveQuarantine="true"` and the cask validation path is an `.app`, run `spctl --assess --type execute`; only if Gatekeeper accepts, remove `com.apple.quarantine` as the logged-in user (`xattr -drs`) so first launch skips the "downloaded from the Internet" prompt
+2. Completion directories: when `homebrewCreateCompletionDirectories="true"`, once per run, create `share/zsh/site-functions` and `share/fish/vendor_completions.d` under the brew prefix as the logged-in user
+3. Trust: `brew trust` for configured third-party tap items (`user/tap/name`) when `homebrewAutoTrustItems="true"`
+4. Execute: `brew install` (or `--cask`; adds `--appdir=~/Applications` for non-admin users) as the logged-in user with `HOMEBREW_NO_SUDO=1`
+5. Inspect Mode: Path monitoring only
+6. Post-check: Exit code + path validation; a successful install whose output reports child-process or permission errors logs a `[WARNING]` and reports "Ready to use; Homebrew reported warnings"
+7. Quarantine (optional): when `homebrewAutoRemoveQuarantine="true"` and the cask validation path is an `.app`, run `spctl --assess --type execute`; only if Gatekeeper accepts, remove `com.apple.quarantine` as the logged-in user (`xattr -drs`) so first launch skips the "downloaded from the Internet" prompt
 
 ### Jamf Policy Items
 1. Pre-check: If validation path exists → skip
@@ -366,6 +369,7 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 | `brewPath` | `""` | Optional Homebrew binary override |
 | `enableHomebrewItems` | `"true"` | Show and execute Homebrew cask/formula items |
 | `homebrewUpdateBeforeInstall` | `"false"` | Run `brew update` once before the first Homebrew package install |
+| `homebrewCreateCompletionDirectories` | `"true"` | Before the first Homebrew install, create `share/zsh/site-functions` and `share/fish/vendor_completions.d` under the brew prefix as the logged-in user so cask shell completions can install |
 | `homebrewAutoTrustItems` | `"true"` | Run `brew trust` for configured third-party tap items (`user/tap/name`) before install |
 | `homebrewAutoRemoveQuarantine` | `"false"` | After a cask install, remove `com.apple.quarantine` from its `.app` validation path, only when Gatekeeper accepts the app |
 | `organizationOverlayiconURL` | swiftDialog logo | Overlay icon URL |
@@ -380,6 +384,6 @@ Item IDs must be unique across `installomatorLabels`, `jamfPolicyItems`, and `ho
 
 ---
 
-**Version:** 1.5.0  
+**Version:** 1.5.1  
 **Date:** 06-Oct-2026  
 **Author:** Dan K. Snelson (@dan-snelson)

@@ -16,9 +16,9 @@
 #
 # HISTORY
 #
-# Version 1.5.0, 06-Oct-2026, Dan K. Snelson (@dan-snelson)
-# - Interactive mode honors a non-empty `operationsCSV` (Parameter 5) as a selection dialog allowlist; an empty value still shows all items (FR #23)
-# - Interactive mode shows the "No selectable items" dialog (after logging valid item IDs) when `operationsCSV` contains no valid item IDs
+# Version 1.5.1, 06-Oct-2026, Dan K. Snelson (@dan-snelson)
+# - Homebrew installs that exit 0 but report child-process or permission errors (e.g., shell completions under `${homebrewPrefix}/share`) now log a `[WARNING]` and show "Ready to use; Homebrew reported warnings" (Issue #24)
+# - Before the first Homebrew install of each run, SYM-Lite creates `share/zsh/site-functions` and `share/fish/vendor_completions.d` under the brew prefix as the Homebrew user, because brew's completion child process can't create them; disable with `homebrewCreateCompletionDirectories="false"` (Issue #24)
 #
 ####################################################################################################
 
@@ -35,7 +35,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.5.0"
+scriptVersion="1.5.1"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -95,6 +95,9 @@ enableHomebrewItems="true"
 
 # Update Homebrew metadata once before the first Homebrew package install
 homebrewUpdateBeforeInstall="false"
+
+# Create zsh and fish completion directories under the brew prefix (as the Homebrew user) before the first Homebrew install
+homebrewCreateCompletionDirectories="true"
 
 # Trust configured third-party tap items (`user/tap/name`) before install; official taps are always trusted
 homebrewAutoTrustItems="true"
@@ -216,6 +219,7 @@ selectionDialogCheckboxesJSON=""
 effectiveBrewPath=""
 homebrewUpdateAttempted="false"
 homebrewUpdateSucceeded="false"
+homebrewCompletionDirectoriesAttempted="false"
 homebrewCommandEnvironment=()
 loggedInUserIsAdmin=""
 homebrewExecutionUser=""
@@ -2496,6 +2500,48 @@ function updateHomebrewMetadataIfNeeded() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Ensure Homebrew Completion Directories
+# Brew's completion child process can write into existing directories under share/ but can't create them
+# (EPERM), so create them once per run as the Homebrew user (never root)
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function ensureHomebrewCompletionDirectories() {
+    local brewPrefix="${effectiveBrewPath:h:h}"
+    local zshCompletionDirectory="${brewPrefix}/share/zsh/site-functions"
+    local fishCompletionDirectory="${brewPrefix}/share/fish/vendor_completions.d"
+    local mkdirExitCode=0
+
+    if [[ "${homebrewCreateCompletionDirectories:l}" != "true" ]]; then
+        return 0
+    fi
+
+    if [[ "${homebrewCompletionDirectoriesAttempted}" == "true" ]]; then
+        return 0
+    fi
+
+    homebrewCompletionDirectoriesAttempted="true"
+
+    if [[ -d "${zshCompletionDirectory}" && -d "${fishCompletionDirectory}" ]]; then
+        return 0
+    fi
+
+    info "Creating Homebrew completion directories under ${brewPrefix}/share as ${loggedInUser} …"
+    runAsUser "${loggedInUser}" /bin/mkdir -p "${zshCompletionDirectory}" "${fishCompletionDirectory}" 2>&1 | while IFS= read -r mkdirOutputLine; do
+        logComment "Homebrew (completions): ${mkdirOutputLine}"
+    done
+    mkdirExitCode=${pipestatus[1]}
+
+    if [[ ${mkdirExitCode} -ne 0 ]]; then
+        warning "Could not create Homebrew completion directories under ${brewPrefix}/share (exit code: ${mkdirExitCode}); shell completions may be missing"
+        return 1
+    fi
+
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Trust Homebrew Item (Optional)
 # Input: Homebrew item ID, brew mode (cask|formula), brew token
 # Only fully-qualified third-party tokens (`user/tap/name`) need trust; official taps are always trusted
@@ -2605,6 +2651,8 @@ function executeHomebrewItem() {
     local iconURL="$6"
     local homebrewExitCode=0
     local homebrewSudoBlocked="false"
+    local homebrewWarningDetected="false"
+    local homebrewWarningDetail=""
     local userApplicationsDirectory=""
     local -a brewCommand=()
 
@@ -2635,6 +2683,8 @@ function executeHomebrewItem() {
         return 1
     fi
 
+    ensureHomebrewCompletionDirectories
+
     trustHomebrewItemIfNeeded "${homebrewID}" "${brewMode}" "${brewToken}"
 
     setHomebrewCommandEnvironment
@@ -2664,6 +2714,19 @@ function executeHomebrewItem() {
     runAsUser "${loggedInUser}" "${brewCommand[@]}" 2>&1 | while IFS= read -r homebrewOutputLine; do
         logComment "Homebrew (${homebrewID}): ${homebrewOutputLine}"
         [[ "${homebrewOutputLine}" == *HOMEBREW_NO_SUDO* ]] && homebrewSudoBlocked="true"
+
+        # Brew can exit 0 after a child process fails (e.g., shell completions under ${homebrewPrefix}/share)
+        case "${homebrewOutputLine}" in
+            *"Operation not permitted"*|*"Permission denied"*)
+                homebrewWarningDetected="true"
+                if [[ -z "${homebrewWarningDetail}" ]]; then
+                    homebrewWarningDetail="${homebrewOutputLine#"${homebrewOutputLine%%[^[:space:]]*}"}"
+                fi
+                ;;
+            *"An exception occurred within a child process"*)
+                homebrewWarningDetected="true"
+                ;;
+        esac
     done
     homebrewExitCode=${pipestatus[1]}
 
@@ -2679,11 +2742,19 @@ function executeHomebrewItem() {
         return 1
     fi
 
+    if [[ "${homebrewWarningDetected}" == "true" ]]; then
+        warning "Homebrew reported errors for '${homebrewID}' despite exit code 0; shell completions or other extras may be missing${homebrewWarningDetail:+: ${homebrewWarningDetail}}"
+    fi
+
     if [[ -n "${validationPath}" && -e "${validationPath}" ]]; then
         info "Homebrew install completed for '${homebrewID}' and validated"
         removeHomebrewQuarantineIfNeeded "${homebrewID}" "${brewMode}" "${validationPath}"
         completedItems+=("${displayName}")
-        addCompletionReportRecord "${displayName}" "installed" "success" "${iconURL}" "Ready to use" "Installed"
+        if [[ "${homebrewWarningDetected}" == "true" ]]; then
+            addCompletionReportRecord "${displayName}" "installed" "success" "${iconURL}" "Ready to use; Homebrew reported warnings" "Installed"
+        else
+            addCompletionReportRecord "${displayName}" "installed" "success" "${iconURL}" "Ready to use" "Installed"
+        fi
         return 0
     fi
 
