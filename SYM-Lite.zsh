@@ -16,22 +16,9 @@
 #
 # HISTORY
 #
-# Version 1.4.0, 06-Oct-2026, Dan K. Snelson (@dan-snelson)
-# - Added Homebrew casks: Claude CLI (`claude-code`), Mem AI (`mem`), Soulver AI (`soulver`), WPS Office (`wpsoffice`)
-# - Added Installomator labels: Firefox ESR (`firefoxesr`), Nova (`nova`), Otter AI (`otter`)
-# - Added Homebrew auto-trust: configured third-party tap items (`user/tap/name`) are trusted via `brew trust` before install (`homebrewAutoTrustItems`)
-# - Added optional Homebrew cask quarantine removal (`homebrewAutoRemoveQuarantine`, default `false`): after install, `com.apple.quarantine` is removed as the logged-in user only when Gatekeeper accepts the app
-# - Homebrew casks install to `~/Applications` when the logged-in user is not a local administrator; validation accepts `/Applications` or `~/Applications`
-# - Homebrew commands run with `HOMEBREW_NO_SUDO=1` so steps requiring `sudo` fail fast (reported as "Requires administrator rights") instead of hanging on a password prompt
-# - Consolidated Homebrew command environment into `setHomebrewCommandEnvironment()`
-# - Installomator ownership check now covers every parent directory, rejects symlinked or relative paths, and re-runs immediately before each label executes
-# - swiftDialog bootstrap requires Gatekeeper acceptance as a notarized Developer ID package before trusting the Team ID
-# - Jamf policy items are removed from the run when the Jamf binary is missing; silent mode reports "Jamf binary unavailable"
-# - Pre-flight warns when the Homebrew binary prefix does not match the validation prefix
-# - Homebrew user is pinned for the run; a mid-run console-user change fails remaining Homebrew items instead of installing as a different user
-# - Client log created `0640`; log rotation keeps only the three newest `.old` files
-# - Pre-flight warns when an item ID is configured in more than one item array
-# - Removed unreachable root `shutdown -r now` restart branch; "Restart Now" restarts only via `loginwindow` as the logged-in user and warns (instead of exiting) if no user is logged in
+# Version 1.5.0, 06-Oct-2026, Dan K. Snelson (@dan-snelson)
+# - Interactive mode honors a non-empty `operationsCSV` (Parameter 5) as a selection dialog allowlist; an empty value still shows all items (FR #23)
+# - Interactive mode shows the "No selectable items" dialog (after logging valid item IDs) when `operationsCSV` contains no valid item IDs
 #
 ####################################################################################################
 
@@ -48,7 +35,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.4.0"
+scriptVersion="1.5.0"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -80,7 +67,7 @@ autoload -Uz is-at-least
 # Runtime inputs (Jamf parameters by default; CLI flags can override)
 operationMode="${4:-"interactive"}"     # Parameter 4: Operation Mode [ interactive (default) | silent ]
 operationMode="${operationMode:l}"
-operationsCSV="${5:-""}"                # Parameter 5: Comma-separated list of item IDs for silent mode
+operationsCSV="${5:-""}"                # Parameter 5: Comma-separated list of item IDs (silent: items to run; interactive: optional selection dialog allowlist)
 
 
 
@@ -222,6 +209,7 @@ completionDialogJSONFile=""
 dialogPID=""
 dialogTemporaryDirectory=""
 selectionDialogOptionRecords=()
+selectionDialogAllowedItemIDs=()
 selectionDialogTotalItemCount=0
 selectionDialogDisabledItemCount=0
 selectionDialogCheckboxesJSON=""
@@ -513,21 +501,30 @@ function getSelectionDialogCheckboxesJSON() {
     local itemID=""
     local existingLabel=""
     local escapedItemID=""
+    local -A allowedItemIDMap=()
 
     selectionDialogOptionRecords=()
     selectionDialogTotalItemCount=0
     selectionDialogDisabledItemCount=0
 
+    # Optional allowlist from operationsCSV (interactive mode); empty shows all items
+    for itemID in "${selectionDialogAllowedItemIDs[@]}"; do
+        allowedItemIDMap[${itemID}]=1
+    done
+
     for item in "${installomatorLabels[@]}"; do
         local parts=("${(@s: | :)item}")
+        [[ ${#allowedItemIDMap} -gt 0 && -z "${allowedItemIDMap[${parts[1]}]}" ]] && continue
         allSortKeys+=("${parts[2]} | installomator | ${item}")
     done
     for item in "${jamfPolicyItems[@]}"; do
         local parts=("${(@s: | :)item}")
+        [[ ${#allowedItemIDMap} -gt 0 && -z "${allowedItemIDMap[${parts[1]}]}" ]] && continue
         allSortKeys+=("${parts[2]} | jamf | ${item}")
     done
     for item in "${homebrewItems[@]}"; do
         local parts=("${(@s: | :)item}")
+        [[ ${#allowedItemIDMap} -gt 0 && -z "${allowedItemIDMap[${parts[1]}]}" ]] && continue
         allSortKeys+=("${parts[2]} | homebrew | ${item}")
     done
 
@@ -2055,6 +2052,21 @@ function normalizeSilentModeCSV() {
     print -r -- "${csv}"
 }
 
+function operationsCSVIsEmpty() {
+    local csv=""
+    local itemID=""
+
+    csv="$(normalizeSilentModeCSV "$1")"
+    [[ -z "${csv}" ]] && return 0
+
+    # Treat separator-only or quoted-empty input (e.g., `,` or `"",""`) as empty
+    for itemID in ${(s:,:)csv}; do
+        [[ -n "$(normalizeSilentModeItemID "${itemID}")" ]] && return 1
+    done
+
+    return 0
+}
+
 ####################################################################################################
 #
 # Selection Interface Functions
@@ -2062,7 +2074,7 @@ function normalizeSilentModeCSV() {
 ####################################################################################################
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Parse Operations CSV (for silent mode)
+# Parse Operations CSV (silent mode selection; interactive mode allowlist)
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 function parseOperationsCSV() {
@@ -2182,7 +2194,7 @@ function showNoSelectableItemsDialog() {
     if [[ ${selectionDialogTotalItemCount} -gt 0 ]] \
     && [[ "${selectionDialogStatusSublabelsEnabled:l}" == "true" ]] \
     && [[ ${selectionDialogDisabledItemCount} -eq ${selectionDialogTotalItemCount} ]]; then
-        messageText="All configured items are already installed, so there is nothing new to process right now."
+        messageText="All available items are already installed, so there is nothing new to process right now."
     fi
 
     "${dialogBinary}" \
@@ -2216,6 +2228,22 @@ function showSelectionDialog() {
     fi
 
     requireLoggedInUser "display selection dialog"
+
+    selectionDialogAllowedItemIDs=()
+    if ! operationsCSVIsEmpty "${operationsCSV}"; then
+        parseOperationsCSV "${operationsCSV}"
+        selectionDialogAllowedItemIDs=("${selectedItems[@]}")
+        selectedItems=()
+
+        if [[ ${#selectionDialogAllowedItemIDs[@]} -eq 0 ]]; then
+            warning "Valid item IDs for this run: $(getAllItemIDsCSV)"
+            warning "Interactive mode: no valid item IDs in operationsCSV; no items to display"
+            showNoSelectableItemsDialog
+            quitScript 0
+        fi
+
+        notice "Interactive mode: limiting selection dialog to ${#selectionDialogAllowedItemIDs[@]} item(s) from operationsCSV"
+    fi
 
     local baseMessage
     local warningMessage=""

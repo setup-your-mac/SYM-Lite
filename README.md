@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite) [![swiftDialog](https://img.shields.io/badge/swiftDialog-Enabled-blue)](https://swiftdialog.app) [![Semgrep Security Scan](https://img.shields.io/badge/security%20scanned%20by-Semgrep-00C7B7?style=flat&logo=semgrep&logoColor=white)](https://semgrep.dev)
 
-# SYM-Lite (1.4.0)
+# SYM-Lite (1.5.0)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) and [Homebrew](https://brew.sh) casks / formulas, as well as Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies), all through a unified [swiftDialog](https://swiftdialog.app) selection and reporting interface.
 
@@ -168,13 +168,13 @@ sudo ~/Downloads/SYM-Lite.zsh
 ```
 
 **User experience:**
-1. Selection dialog appears with all configured items; selectable items start checked when `selectionDialogDefaultChecked="true"`
+1. Selection dialog appears with all available items (or only the items listed in Parameter 5; see [Limit the Interactive Selection Dialog](#limit-the-interactive-selection-dialog)); selectable items start checked when `selectionDialogDefaultChecked="true"`
 2. User selects one or more items using checkboxes
 3. Inspect Mode dialog launches showing real-time progress
 4. Completion report shows one row per selected item
 5. Optional restart prompt
 
-`selectionDialogDefaultChecked` affects interactive mode only. Users can deselect prechecked items before continuing, and already-installed items disabled by status sublabels remain unchecked. Silent mode continues to select items exclusively from `operationsCSV`.
+`selectionDialogDefaultChecked` affects interactive mode only. Users can deselect prechecked items before continuing, and already-installed items disabled by status sublabels remain unchecked. Silent mode does not show a selection dialog; it runs the items listed in `operationsCSV`.
 
 If the user clicks `Cancel` in the selection dialog, interactive mode exits cleanly without launching Inspect Mode. If `selectionDialogStatusSublabelsEnabled="true"` and every remaining valid item is already installed, interactive mode shows an informational dialog and exits without launching Inspect Mode. If no valid items remain after configuration validation, interactive mode exits cleanly with a generic unavailable-items message.
 
@@ -182,6 +182,26 @@ If the user clicks `Cancel` in the selection dialog, interactive mode exits clea
 - Requires an active logged-in GUI user
 - Waits up to 120 seconds for a valid console user before exiting
 - If the Mac is at the login window or otherwise headless, use `silent` mode instead
+
+### Limit the Interactive Selection Dialog
+
+Parameter 5 (`operationsCSV`) is optional in interactive mode. When it's set, the selection dialog shows only the listed item IDs, so one copy of SYM-Lite can back several focused Self Service policies.
+
+**Via Jamf Policy (e.g., "Developer Tools"):**
+- Parameter 4: `interactive`
+- Parameter 5: `homebrew,cask:1password-cli,cask:claude-code,cask:codex,formula:direnv`
+
+**Direct execution:**
+```bash
+sudo /path/to/SYM-Lite.zsh "" "" "" interactive "cask:codex,formula:direnv"
+```
+
+- An empty Parameter 5 (including separator-only values such as `,`) shows all available items, as before
+- Listed items are still sorted by display name; CSV order is ignored
+- Item IDs are parsed and normalized exactly as in silent mode; unknown or unavailable IDs are warned and skipped
+- Status sublabels and `selectionDialogDefaultChecked` work the same way for the listed items
+- If Parameter 5 contains no valid item IDs, SYM-Lite logs the valid item IDs for the run, shows the "no selectable items" dialog, and exits without falling back to the full list
+- Homebrew items are hidden when `brew` is not installed, so a Homebrew-focused list should also include the `homebrew` Installomator label; once Homebrew is installed, run the policy again to see the casks and formulae
 
 ### Silent Mode
 
@@ -245,7 +265,7 @@ PRE-FLIGHT CHECKS
   ├─ Warn on item IDs configured in more than one item array
        ↓
 SELECTION INTERFACE
-  ├─ Show dialog (interactive) or parse CSV (silent)
+  ├─ Show dialog (interactive; optional Parameter 5 allowlist) or parse CSV (silent)
   ├─ Validate at least one selection
   └─ Collect selected item IDs (interactive: display-name order; silent: CSV order)
        ↓
@@ -360,6 +380,6 @@ Item IDs must be unique across `installomatorLabels`, `jamfPolicyItems`, and `ho
 
 ---
 
-**Version:** 1.4.0  
+**Version:** 1.5.0  
 **Date:** 06-Oct-2026  
 **Author:** Dan K. Snelson (@dan-snelson)

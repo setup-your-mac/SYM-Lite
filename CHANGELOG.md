@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.5.0 - 06-Oct-2026
+- Interactive mode honors a non-empty `operationsCSV` (Parameter 5) as a selection dialog allowlist; an empty value still shows all items (FR #23)
+- Interactive mode shows the "No selectable items" dialog (after logging valid item IDs) when `operationsCSV` contains no valid item IDs
+
 ## 1.4.0 - 06-Oct-2026
 - Added Homebrew casks: Claude CLI (`claude-code`), Mem AI (`mem`), Soulver AI (`soulver`), WPS Office (`wpsoffice`)
 - Added Installomator labels: Firefox ESR (`firefoxesr`), Nova (`nova`), Otter AI (`otter`)
