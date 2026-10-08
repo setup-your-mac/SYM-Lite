@@ -66,7 +66,7 @@ Invoke relevant skill name during planning.
 **Never do**
 - Hardcode secrets, tokens, org-private endpoints, or credentials.
 - Modify files outside current task scope without approval.
-- Add arbitrary package workflows beyond Jamf triggers, Installomator labels, or explicitly configured Homebrew packages.
+- Add arbitrary package workflows beyond Jamf triggers, Installomator labels, or explicitly configured Homebrew packages. Only exception: gated Command Line Tools bootstrap for Homebrew `git` (like `dialogCheck()` bootstrapping swiftDialog).
 - Break macOS-only or root-run assumptions by accident.
 
 ## Source of Truth
@@ -84,6 +84,7 @@ In scope:
 - Installomator label execution
 - Jamf policy trigger execution
 - approved Homebrew formula and cask execution
+- Command Line Tools bootstrap as Homebrew `git` prerequisite only (not a general package workflow)
 - path-based validation, logging, completion reporting, and restart prompts
 
 Out of scope:
@@ -121,6 +122,7 @@ Out of scope:
 - `homebrewAutoRemoveQuarantine` (default `false`) strips `com.apple.quarantine` only from cask `.app` validation paths, only after `spctl` accepts, and runs `xattr` as logged-in user (never root); wrong `validationPath` silently skips it.
 - `ensureHomebrewCompletionDirectories()` creates `share/zsh/site-functions` and `share/fish/vendor_completions.d` under `${effectiveBrewPath:h:h}` once per run as the Homebrew user when `homebrewCreateCompletionDirectories` is `true` (default); brew's completion child process gets EPERM creating them itself.
 - `executeHomebrewItem()` scans brew output for child-process exceptions, `Operation not permitted`, and `Permission denied`; on exit `0` it logs `[WARNING]` and reports "Ready to use; Homebrew reported warnings" (item still counts as completed).
+- `installCommandLineTools()` (gated by `homebrewAutoInstallCommandLineTools`, default `true`) runs `softwareupdate` as root once per run when `resolveHomebrewGitPath()` finds no `git`; hooks: before Installomator `homebrew` label install (`bootstrapHomebrewGitBeforeLabel()`; Homebrew.pkg postinstall resets its checkout only when `xcode-select -p` has `git`, else brew reports `-dirty`), after label install or skip (`bootstrapHomebrewGitAfterLabel()`, also `logHomebrewVersion()` once per run, `[WARNING]` on `-dirty`), and in `executeHomebrewItem()` before `updateHomebrewMetadataIfNeeded()`. Never run `/usr/bin/git` (CLT stub prompts user); keep `-x` tests. Trigger file in `/tmp` is removed, created with `NO_CLOBBER`, verified root-owned, and removed by `cleanup()` only if SYM-Lite created it. Missing `git` skips `brew update` (warn once) instead of failing items. Inspect Mode CLT row (`isCommandLineToolsBootstrapExpected()`) sits at the bootstrap's execution point and completes via marker file in `dialogRuntimeDirectory`, written by `markCommandLineToolsInspectItemComplete()` only once `git` is available.
 - Jamf and Homebrew completion remain path-based, not rich progress parsed.
 
 ## Repository Rules
