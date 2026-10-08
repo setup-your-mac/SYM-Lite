@@ -16,7 +16,7 @@
 #
 # HISTORY
 #
-# Version 1.6.0, 08-Oct-2026, Dan K. Snelson (@dan-snelson)
+# Version 1.6.0b2, 08-Oct-2026, Dan K. Snelson (@dan-snelson)
 # - When `git` is missing (no Xcode, Command Line Tools, or brewed `git`), SYM-Lite installs Apple's Command Line Tools as `root` via `softwareupdate` so Homebrew isn't left degraded; logic adapted from Rich Trouton's `install_xcode_command_line_tools.sh`; disable with `homebrewAutoInstallCommandLineTools="false"` (Issue #27)
 # - Command Line Tools install runs once per run, before the Installomator `homebrew` label installs Homebrew (Homebrew.pkg's postinstall resets its `git` checkout only when Command Line Tools `git` exists; otherwise `brew --version` reports `-dirty`), after the label skips an existing Homebrew, and before the first Homebrew item; it needs no logged-in user
 # - Pre-flight logs whether `git` is available for Homebrew
@@ -25,6 +25,7 @@
 # - Inspect Mode shows a "Command Line Tools (for Homebrew)" row where the install runs (before the `homebrew` label or the first Homebrew item); it completes once `git` is available, and a side message notes it can take several minutes
 # - After the Installomator `homebrew` label (or a Command Line Tools install), `brew --version` is logged once per run; a `-dirty` checkout logs a `[WARNING]` suggesting `brew update-reset`
 # - Command Line Tools progress is logged: `softwareupdate` scan and install output stream to the log as `softwareupdate (CLT scan): …` and `softwareupdate (CLT): …`, with elapsed seconds for each step
+# - Selection and completion dialog height is now Parameter 6 (default: `675`), so a short `operationsCSV` list can use a smaller window
 #
 ####################################################################################################
 
@@ -41,7 +42,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.6.0"
+scriptVersion="1.6.0b2"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -74,6 +75,7 @@ autoload -Uz is-at-least
 operationMode="${4:-"interactive"}"     # Parameter 4: Operation Mode [ interactive (default) | silent ]
 operationMode="${operationMode:l}"
 operationsCSV="${5:-""}"                # Parameter 5: Comma-separated list of item IDs (silent: items to run; interactive: optional selection dialog allowlist)
+dialogHeight="${6:-"675"}"              # Parameter 6: Selection and completion dialog height, in pixels (default: 675)
 
 
 
@@ -1772,6 +1774,14 @@ case "${operationMode}" in
     * ) fatal "Invalid operationMode '${operationMode}'; expected 'interactive' or 'silent'" ;;
 esac
 
+dialogHeight="${dialogHeight//[[:space:]]/}"
+if [[ "${dialogHeight}" =~ ^[0-9]+$ ]] && (( 10#${dialogHeight} > 0 )); then
+    dialogHeight="$(( 10#${dialogHeight} ))"
+else
+    warning "Invalid dialogHeight '${dialogHeight}'; using default 675"
+    dialogHeight="675"
+fi
+
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -2447,7 +2457,7 @@ function showSelectionDialog() {
             --json \
             --button1text "Continue" \
             --button2text "Cancel" \
-            --height 675 \
+            --height "${dialogHeight}" \
             --width 900 2>/dev/null)"
 
         rc=$?
@@ -3343,7 +3353,7 @@ function showCompletionDialog() {
     \"icon\": \"$(escapeJSONString "${dialogIcon}")\",
     \"button1text\": \"Close\",
     \"infotext\": \"$(escapeJSONString "${scriptVersion}")\",
-    \"height\": 675,
+    \"height\": ${dialogHeight},
     \"width\": 900,
     \"messagefont\": \"size=${fontSize}\",
     \"listitem\": ${listItemsJSON}

@@ -117,6 +117,7 @@ Out of scope:
 - `validationPath` drives both pre-execution skip logic and Inspect Mode completion detection; wrong path can suppress needed work or hide completion.
 - Interactive mode needs active logged-in GUI user and exits after wait window if none appears.
 - `operationsCSV` (Parameter 5) is dual-purpose: silent mode runs listed items; interactive mode uses non-empty value as selection dialog allowlist (`selectionDialogAllowedItemIDs`). `operationsCSVIsEmpty()` treats separator-only or quoted-empty input as empty (show all); zero valid IDs shows "No selectable items" dialog, never full list.
+- `dialogHeight` (Parameter 6, default `675`) sets height for `showSelectionDialog()` and `showCompletionDialog()` only; pre-flight strips whitespace, normalizes to base-10 positive integer (completion JSON embeds it unquoted), else warns and falls back to `675`.
 - Homebrew execution runs in logged-in user context even though script itself runs as root; all brew commands set `HOMEBREW_NO_SUDO=1` so nothing blocks on a password prompt.
 - Non-admin logged-in users get casks in `~/Applications` (`--appdir`); `resolveHomebrewValidationPath()` maps `/Applications/…` validation paths to either location.
 - `homebrewAutoRemoveQuarantine` (default `false`) strips `com.apple.quarantine` only from cask `.app` validation paths, only after `spctl` accepts, and runs `xattr` as logged-in user (never root); wrong `validationPath` silently skips it.

@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite) [![swiftDialog](https://img.shields.io/badge/swiftDialog-Enabled-blue)](https://swiftdialog.app) [![Semgrep Security Scan](https://img.shields.io/badge/security%20scanned%20by-Semgrep-00C7B7?style=flat&logo=semgrep&logoColor=white)](https://semgrep.dev)
 
-# SYM-Lite (1.6.0)
+# SYM-Lite (1.6.0b2)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) and [Homebrew](https://brew.sh) casks / formulas, as well as Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies), all through a unified [swiftDialog](https://swiftdialog.app) selection and reporting interface.
 
@@ -200,10 +200,11 @@ Parameter 5 (`operationsCSV`) is optional in interactive mode. When it's set, th
 **Via Jamf Policy (e.g., "Developer Tools"):**
 - Parameter 4: `interactive`
 - Parameter 5: `homebrew,cask:1password-cli,cask:claude-code,cask:codex,formula:direnv`
+- Parameter 6: `675` (optional dialog height)
 
 **Direct execution:**
 ```bash
-sudo /path/to/SYM-Lite.zsh "" "" "" interactive "cask:codex,formula:direnv"
+sudo /path/to/SYM-Lite.zsh "" "" "" interactive "cask:codex,formula:direnv" 450
 ```
 
 - An empty Parameter 5 (including separator-only values such as `,`) shows all available items, as before
@@ -212,6 +213,7 @@ sudo /path/to/SYM-Lite.zsh "" "" "" interactive "cask:codex,formula:direnv"
 - Status sublabels and `selectionDialogDefaultChecked` work the same way for the listed items
 - If Parameter 5 contains no valid item IDs, SYM-Lite logs the valid item IDs for the run, shows the "no selectable items" dialog, and exits without falling back to the full list
 - Homebrew items are hidden when `brew` is not installed, so a Homebrew-focused list should also include the `homebrew` Installomator label; once Homebrew is installed, run the policy again to see the casks and formulae
+- Parameter 6 (`dialogHeight`) sets the selection and completion dialog height in pixels (default: `675`); use a smaller value for short lists. Invalid values log a `[WARNING]` and fall back to `675`; silent mode ignores it
 
 ### Silent Mode
 
@@ -399,6 +401,6 @@ Item IDs must be unique across `installomatorLabels`, `jamfPolicyItems`, and `ho
 
 ---
 
-**Version:** 1.6.0  
+**Version:** 1.6.0b2  
 **Date:** 08-Oct-2026  
 **Author:** Dan K. Snelson (@dan-snelson)
