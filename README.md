@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite) [![swiftDialog](https://img.shields.io/badge/swiftDialog-Enabled-blue)](https://swiftdialog.app) [![Semgrep Security Scan](https://img.shields.io/badge/security%20scanned%20by-Semgrep-00C7B7?style=flat&logo=semgrep&logoColor=white)](https://semgrep.dev)
 
-# SYM-Lite (1.5.1)
+# SYM-Lite (1.6.0)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) and [Homebrew](https://brew.sh) casks / formulas, as well as Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies), all through a unified [swiftDialog](https://swiftdialog.app) selection and reporting interface.
 
@@ -41,6 +41,7 @@
 ✓ **Silent mode** — CSV-based automation support  
 ✓ **Early Installomator label validation** — Configured Installomator labels are verified against the active Installomator file before they can appear or run  
 ✓ **Homebrew package support** — Approved casks and formulas run in the logged-in user context when `brew` is available  
+✓ **Command Line Tools bootstrap** — Installs Apple's Command Line Tools when Homebrew has no `git`, so `brew update` and taps work  
 ✓ **Inspect Mode monitoring** — Rich status updates for Installomator labels and path-based progress for Homebrew/Jamf items  
 ✓ **Log monitoring** — Parses Installomator.log for intermediate states and captures Homebrew/Jamf output into the main log  
 ✓ **Path-based validation** — Pre/post-execution checks via file system monitoring  
@@ -111,6 +112,13 @@ homebrewItems=(
 - If `brew` exits `0` but its output reports a child-process exception, `Operation not permitted`, or `Permission denied` (e.g., cask shell completions under `${homebrewPrefix}/share` failing even though the Homebrew user owns the prefix), SYM-Lite logs a `[WARNING]` and reports "Ready to use; Homebrew reported warnings"; the installed command or app still works, only extras such as shell completions may be missing
 - Validation paths use `${homebrewPrefix}` (`/opt/homebrew` on Apple silicon, `/usr/local` on Intel); pre-flight warns when the detected or configured `brew` lives under a different prefix, because skip and completion checks may then be wrong
 - The Homebrew user is pinned during pre-flight; if the console user changes mid-run, remaining Homebrew items fail instead of running as the new user
+- When `homebrewAutoInstallCommandLineTools="true"` (default) and no `git` is found, SYM-Lite installs Apple's Command Line Tools as `root` via `softwareupdate`, once per run: before the Installomator `homebrew` label installs Homebrew, after it skips an existing Homebrew, and before the first Homebrew item. Homebrew.pkg's postinstall resets its `git` checkout only when Command Line Tools `git` already exists; installed without it, `brew --version` reports `-dirty`. No logged-in user, admin rights, or prompts are needed. Logic is adapted from Rich Trouton's [`install_xcode_command_line_tools.sh`](https://github.com/rtrouton/rtrouton_scripts/tree/main/rtrouton_scripts/install_xcode_command_line_tools) and embedded in the script (never downloaded at runtime)
+- `git` detection checks the active developer directory, `/Library/Developer/CommandLineTools`, `/Applications/Xcode.app`, and a brewed `git` under the brew prefix with `-x` tests only; it never runs `/usr/bin/git`, whose stub would show the "Install Command Line Tools" prompt to the user
+- Command Line Tools need Apple's software update catalog and CDN; `softwareupdate --list` can take a minute or more and the download is large, so the first Homebrew step can add several minutes. Scan and install output stream to the log (`softwareupdate (CLT scan): …`, `softwareupdate (CLT): …`) with elapsed seconds for each step. Offline Macs, a blocked CDN, or MDM-deferred updates log a `[WARNING]` and the run continues; bottle and cask installs still work without `git`
+- After the Installomator `homebrew` label (or a Command Line Tools install), SYM-Lite logs `brew --version` once per run; a `-dirty` checkout logs a `[WARNING]` suggesting `brew update-reset` as the logged-in user, because Command Line Tools alone don't clean an existing checkout
+- If `git` is still missing, `homebrewUpdateBeforeInstall="true"` skips `brew update` with one `[WARNING]` instead of failing every Homebrew item, the Installomator `homebrew` completion row adds "git is missing, so brew update is unavailable", and third-party tap items (`user/tap/name`) fail because tapping needs `git`
+- Interactive mode disables already-installed items, so to repair an existing Homebrew that lacks `git`, select a Homebrew item that isn't installed yet, or run silent mode with `homebrew` in Parameter 5
+- An installed `Xcode.app` satisfies the `git` check even if its license hasn't been accepted; `git` then fails until the license is accepted (e.g., `xcodebuild -license accept` in the Xcode policy)
 
 ### Adding Jamf Policy Items
 
@@ -250,6 +258,7 @@ If SYM-Lite reports an unknown item ID, compare Parameter 5 against the identifi
   - Configured Installomator labels are validated early against the active `organizationInstallomatorFile`
   - If the Installomator file is unavailable or cannot be parsed, Installomator labels are hidden and skipped for that run
 - **Homebrew Binary** — Required only when `enableHomebrewItems="true"` and Homebrew items are configured
+- **Apple Command Line Tools** — Installed via `softwareupdate` only when `homebrewAutoInstallCommandLineTools="true"` and Homebrew has no `git`; needs Apple's software update catalog and CDN
 - **Jamf Pro Binary** — Required only when `enableJamfPolicyItems="true"` and Jamf policy items are configured
 
 ---
@@ -261,7 +270,7 @@ PRE-FLIGHT CHECKS
   ├─ Verify root
   ├─ Check/install swiftDialog
   ├─ Normalize Installomator labels
-  ├─ Normalize Homebrew item availability and detect brew path
+  ├─ Normalize Homebrew item availability, detect brew path, and log git availability
   ├─ Normalize Jamf item availability from configuration
   ├─ Verify Jamf binary (if enabled and items configured; removes Jamf items when missing)
   ├─ Warn on item IDs configured in more than one item array
@@ -275,6 +284,7 @@ INSPECT MODE CONFIGURATION
   ├─ Interactive mode only
   ├─ Build unified JSON config
   ├─ Merge Installomator + Homebrew + Jamf items
+  ├─ Add a Command Line Tools row when Homebrew work is selected and git is missing
   ├─ Add cachePaths for download detection
   └─ Validate JSON with plutil
        ↓
@@ -282,8 +292,8 @@ EXECUTION ENGINE
   ├─ Interactive mode launches Inspect Mode dialog (background)
   │   └─ Silent mode logs progress without UI
   ├─ Process items sequentially in selection order
-  │   ├─ Installomator: executeInstallomatorLabel()
-  │   ├─ Homebrew: executeHomebrewItem()
+  │   ├─ Installomator: executeInstallomatorLabel() (`homebrew` label: install Command Line Tools first if git is missing)
+  │   ├─ Homebrew: executeHomebrewItem() (installs Command Line Tools first if git is missing)
   │   └─ Jamf: executeJamfPolicy()
   ├─ Interactive mode waits for Inspect Mode to close
   └─ Silent mode exits when execution completes
@@ -315,6 +325,7 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 **File System Monitoring Only:**
 - Shows binary states: "Waiting" → "Completed"
 - Watches validation path (e.g., `/Applications/Docker.app` or `/opt/homebrew/bin/node`)
+- When Command Line Tools will be installed for Homebrew (setting enabled, Homebrew work selected, `git` missing), a "Command Line Tools (for Homebrew)" row appears where the install runs: right before the Installomator `homebrew` row or the first Homebrew item, whichever comes first. It shows "Waiting" → "Completed" (no percentage) and completes once `git` is available; if the install fails, it stays waiting like any other failed item. A side message notes it can take several minutes
 
 ### For Jamf Pro Policies (Binary Status)
 
@@ -339,15 +350,18 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 3. Execute: `Installomator.sh <label>` with `DEBUG=0 NOTIFY=silent`
 4. Inspect Mode: Log parsing + path monitoring
 5. Post-check: Exit code determines success/failure
+6. `homebrew` label only: when `enableHomebrewItems="true"`, install Command Line Tools if `git` is missing, before step 3 (so Homebrew.pkg's postinstall leaves a clean checkout) or after a skip; log `brew --version` (`[WARNING]` on `-dirty`); the row adds "git is missing, so brew update is unavailable" if it still is
 
 ### Homebrew Items
 1. Pre-check: If validation path exists → skip
-2. Completion directories: when `homebrewCreateCompletionDirectories="true"`, once per run, create `share/zsh/site-functions` and `share/fish/vendor_completions.d` under the brew prefix as the logged-in user
-3. Trust: `brew trust` for configured third-party tap items (`user/tap/name`) when `homebrewAutoTrustItems="true"`
-4. Execute: `brew install` (or `--cask`; adds `--appdir=~/Applications` for non-admin users) as the logged-in user with `HOMEBREW_NO_SUDO=1`
-5. Inspect Mode: Path monitoring only
-6. Post-check: Exit code + path validation; a successful install whose output reports child-process or permission errors logs a `[WARNING]` and reports "Ready to use; Homebrew reported warnings"
-7. Quarantine (optional): when `homebrewAutoRemoveQuarantine="true"` and the cask validation path is an `.app`, run `spctl --assess --type execute`; only if Gatekeeper accepts, remove `com.apple.quarantine` as the logged-in user (`xattr -drs`) so first launch skips the "downloaded from the Internet" prompt
+2. Command Line Tools: when `homebrewAutoInstallCommandLineTools="true"` and no `git` is found, once per run, install Command Line Tools as `root` via `softwareupdate`
+3. Metadata (optional): when `homebrewUpdateBeforeInstall="true"`, once per run, run `brew update` as the logged-in user; skipped with a `[WARNING]` if `git` is still missing
+4. Completion directories: when `homebrewCreateCompletionDirectories="true"`, once per run, create `share/zsh/site-functions` and `share/fish/vendor_completions.d` under the brew prefix as the logged-in user
+5. Trust: `brew trust` for configured third-party tap items (`user/tap/name`) when `homebrewAutoTrustItems="true"`
+6. Execute: `brew install` (or `--cask`; adds `--appdir=~/Applications` for non-admin users) as the logged-in user with `HOMEBREW_NO_SUDO=1`
+7. Inspect Mode: Path monitoring only
+8. Post-check: Exit code + path validation; a successful install whose output reports child-process or permission errors logs a `[WARNING]` and reports "Ready to use; Homebrew reported warnings"
+9. Quarantine (optional): when `homebrewAutoRemoveQuarantine="true"` and the cask validation path is an `.app`, run `spctl --assess --type execute`; only if Gatekeeper accepts, remove `com.apple.quarantine` as the logged-in user (`xattr -drs`) so first launch skips the "downloaded from the Internet" prompt
 
 ### Jamf Policy Items
 1. Pre-check: If validation path exists → skip
@@ -370,6 +384,7 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 | `enableHomebrewItems` | `"true"` | Show and execute Homebrew cask/formula items |
 | `homebrewUpdateBeforeInstall` | `"false"` | Run `brew update` once before the first Homebrew package install |
 | `homebrewCreateCompletionDirectories` | `"true"` | Before the first Homebrew install, create `share/zsh/site-functions` and `share/fish/vendor_completions.d` under the brew prefix as the logged-in user so cask shell completions can install |
+| `homebrewAutoInstallCommandLineTools` | `"true"` | When no `git` is found, install Apple's Command Line Tools as `root` via `softwareupdate` before first Homebrew use, so `brew update` and taps work; `"false"` only logs a `[WARNING]` |
 | `homebrewAutoTrustItems` | `"true"` | Run `brew trust` for configured third-party tap items (`user/tap/name`) before install |
 | `homebrewAutoRemoveQuarantine` | `"false"` | After a cask install, remove `com.apple.quarantine` from its `.app` validation path, only when Gatekeeper accepts the app |
 | `organizationOverlayiconURL` | swiftDialog logo | Overlay icon URL |
@@ -384,6 +399,6 @@ Item IDs must be unique across `installomatorLabels`, `jamfPolicyItems`, and `ho
 
 ---
 
-**Version:** 1.5.1  
-**Date:** 06-Oct-2026  
+**Version:** 1.6.0  
+**Date:** 08-Oct-2026  
 **Author:** Dan K. Snelson (@dan-snelson)
