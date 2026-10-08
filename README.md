@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite) [![swiftDialog](https://img.shields.io/badge/swiftDialog-Enabled-blue)](https://swiftdialog.app) [![Semgrep Security Scan](https://img.shields.io/badge/security%20scanned%20by-Semgrep-00C7B7?style=flat&logo=semgrep&logoColor=white)](https://semgrep.dev)
 
-# SYM-Lite (1.6.0b2)
+# SYM-Lite (1.6.0b3)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) and [Homebrew](https://brew.sh) casks / formulas, as well as Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies), all through a unified [swiftDialog](https://swiftdialog.app) selection and reporting interface.
 
@@ -214,6 +214,7 @@ sudo /path/to/SYM-Lite.zsh "" "" "" interactive "cask:codex,formula:direnv" 450
 - If Parameter 5 contains no valid item IDs, SYM-Lite logs the valid item IDs for the run, shows the "no selectable items" dialog, and exits without falling back to the full list
 - Homebrew items are hidden when `brew` is not installed, so a Homebrew-focused list should also include the `homebrew` Installomator label; once Homebrew is installed, run the policy again to see the casks and formulae
 - Parameter 6 (`dialogHeight`) sets the selection and completion dialog height in pixels (default: `675`); use a smaller value for short lists. Invalid values log a `[WARNING]` and fall back to `675`; silent mode ignores it
+- When Parameter 6 is less than `500`, Inspect Mode switches to [Preset 3 (Compact)](https://swiftdialog.app/advanced/inspect/preset3/) instead of `organizationPreset`, at the same 900-pixel width and Parameter 6 height as the selection and completion dialogs; its button shows a disabled "Continue" until items complete
 
 ### Silent Mode
 
@@ -377,7 +378,7 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `organizationPreset` | `"2"` | swiftDialog Inspect Mode preset (1-4) |
+| `organizationPreset` | `"2"` | swiftDialog Inspect Mode preset (1-4); Preset 3 is used when Parameter 6 is less than `500` |
 | `organizationInstallomatorFile` | `/Library/Application Support/AppAutoPatch/Installomator/Installomator.sh` | Path to Installomator.sh |
 | `installomatorLog` | `/var/log/Installomator.log` | Installomator log path for monitoring |
 | `jamfBinary` | `/usr/local/jamf/bin/jamf` | Path to jamf binary |
@@ -401,6 +402,6 @@ Item IDs must be unique across `installomatorLabels`, `jamfPolicyItems`, and `ho
 
 ---
 
-**Version:** 1.6.0b2  
+**Version:** 1.6.0b3  
 **Date:** 08-Oct-2026  
 **Author:** Dan K. Snelson (@dan-snelson)

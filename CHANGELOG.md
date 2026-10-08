@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## 1.6.0b2 - 08-Oct-2026
+## 1.6.0b3 - 08-Oct-2026
 - When `git` is missing (no Xcode, Command Line Tools, or brewed `git`), SYM-Lite installs Apple's Command Line Tools as `root` via `softwareupdate` so Homebrew isn't left degraded; logic adapted from Rich Trouton's `install_xcode_command_line_tools.sh`; disable with `homebrewAutoInstallCommandLineTools="false"` (Issue #27)
 - Command Line Tools install runs once per run, before the Installomator `homebrew` label installs Homebrew (Homebrew.pkg's postinstall resets its `git` checkout only when Command Line Tools `git` exists; otherwise `brew --version` reports `-dirty`), after the label skips an existing Homebrew, and before the first Homebrew item; it needs no logged-in user
 - Pre-flight logs whether `git` is available for Homebrew
@@ -12,6 +12,9 @@ All notable changes to this project are documented in this file.
 - After the Installomator `homebrew` label (or a Command Line Tools install), `brew --version` is logged once per run; a `-dirty` checkout logs a `[WARNING]` suggesting `brew update-reset`
 - Command Line Tools progress is logged: `softwareupdate` scan and install output stream to the log as `softwareupdate (CLT scan): …` and `softwareupdate (CLT): …`, with elapsed seconds for each step
 - Selection and completion dialog height is now Parameter 6 (default: `675`), so a short `operationsCSV` list can use a smaller window
+- When Parameter 6 is less than `500`, Inspect Mode uses Preset 3 (Compact) instead of `organizationPreset`, sized to match the selection and completion dialogs (900 x Parameter 6)
+- Inspect Mode's completion button reads "Continue" (was "Review Results"); Preset 3 omits "Please wait..." because it ignores `autoEnableButtonText` when `button1text` is set
+- Installomator `codex` validation path is now `/Applications/ChatGPT.app` (where the label installs), so Inspect Mode marks it complete and enables the button
 
 ## 1.5.1 - 06-Oct-2026
 - Homebrew installs that exit 0 but report child-process or permission errors (e.g., shell completions under `${homebrewPrefix}/share`) now log a `[WARNING]` and show "Ready to use; Homebrew reported warnings" (Issue #24)

@@ -16,7 +16,7 @@
 #
 # HISTORY
 #
-# Version 1.6.0b2, 08-Oct-2026, Dan K. Snelson (@dan-snelson)
+# Version 1.6.0b3, 08-Oct-2026, Dan K. Snelson (@dan-snelson)
 # - When `git` is missing (no Xcode, Command Line Tools, or brewed `git`), SYM-Lite installs Apple's Command Line Tools as `root` via `softwareupdate` so Homebrew isn't left degraded; logic adapted from Rich Trouton's `install_xcode_command_line_tools.sh`; disable with `homebrewAutoInstallCommandLineTools="false"` (Issue #27)
 # - Command Line Tools install runs once per run, before the Installomator `homebrew` label installs Homebrew (Homebrew.pkg's postinstall resets its `git` checkout only when Command Line Tools `git` exists; otherwise `brew --version` reports `-dirty`), after the label skips an existing Homebrew, and before the first Homebrew item; it needs no logged-in user
 # - Pre-flight logs whether `git` is available for Homebrew
@@ -26,6 +26,9 @@
 # - After the Installomator `homebrew` label (or a Command Line Tools install), `brew --version` is logged once per run; a `-dirty` checkout logs a `[WARNING]` suggesting `brew update-reset`
 # - Command Line Tools progress is logged: `softwareupdate` scan and install output stream to the log as `softwareupdate (CLT scan): …` and `softwareupdate (CLT): …`, with elapsed seconds for each step
 # - Selection and completion dialog height is now Parameter 6 (default: `675`), so a short `operationsCSV` list can use a smaller window
+# - When Parameter 6 is less than `500`, Inspect Mode uses Preset 3 (Compact) instead of `organizationPreset`, sized to match the selection and completion dialogs (900 x Parameter 6)
+# - Inspect Mode's completion button reads "Continue" (was "Review Results"); Preset 3 omits "Please wait..." because it ignores `autoEnableButtonText` when `button1text` is set
+# - Installomator `codex` validation path is now `/Applications/ChatGPT.app` (where the label installs), so Inspect Mode marks it complete and enables the button
 #
 ####################################################################################################
 
@@ -42,7 +45,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.6.0b2"
+scriptVersion="1.6.0b3"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -150,7 +153,7 @@ installomatorLabels=(
     "awsvpnclient | AWS VPN Client | /Applications/AWS VPN Client/AWS VPN Client.app | https://usw2.ics.services.jamfcloud.com/icon/hash_1d1bef5523d9f7eca5a45f2db9a63732e85edb5f914220807ca740ba7c4881b9"
     "bruno | Bruno | /Applications/Bruno.app | https://usw2.ics.services.jamfcloud.com/icon/hash_48501630ad2f5dd5de3e055d6acdda07682895440cad366ee7befac71cab1399"
     "charles | Charles Proxy | /Applications/Charles.app | https://use2.ics.services.jamfcloud.com/icon/hash_59b395ca81889a6d83deda8e6babc5ae4bc5931d36a72b738fe30b84d027593d"
-    "codex | OpenAI ChatGPT Codex | /Applications/ChatGPT.localized/ChatGPT.app | https://usw2.ics.services.jamfcloud.com/icon/hash_be9d2917e81980484f875d9056e5e4aa45d59dffa7b03c20f8dbb5137e96ee26"
+    "codex | OpenAI ChatGPT Codex | /Applications/ChatGPT.app | https://usw2.ics.services.jamfcloud.com/icon/hash_be9d2917e81980484f875d9056e5e4aa45d59dffa7b03c20f8dbb5137e96ee26"
     "docker | Docker | /Applications/Docker.app | https://usw2.ics.services.jamfcloud.com/icon/hash_a344dca5fdc0e86822e8f21ec91088e6591b1e292bdcebdee1281fbd794c2724"
     "firefoxesr | Firefox ESR | /Applications/Firefox.app | https://appinstallers-packages.services.jamfcloud.com/icons/0B3.png"
     "homebrew | Homebrew | ${homebrewPrefix}/bin/brew | https://usw2.ics.services.jamfcloud.com/icon/hash_9edff3eb98482a1aaf17f8560488f7b500cc7dc64955b8a9027b3801cab0fd82"
@@ -2049,6 +2052,20 @@ function createSYMLiteInspectConfig() {
         [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}s"
         messageText="Installing selected software. Items complete when files appear at their validation paths."
     fi
+
+    # Short dialogs (Parameter 6 below 500) use Preset 3 (Compact) instead of the organization's preset,
+    # sized to match the selection and completion dialogs (swiftDialog needs both width and height)
+    local inspectPreset="${organizationPreset}"
+    local inspectWindowSizeJSON=""
+    local inspectButton1TextJSON='    "button1text": "Please wait...",'
+    if [[ ${dialogHeight} -lt 500 ]]; then
+        inspectPreset="3"
+        # Preset 3 prefers config `button1text` over `autoEnableButtonText`, so omit it to let "Continue" appear on completion
+        inspectButton1TextJSON=""
+        inspectWindowSizeJSON="    \"width\": 900,
+    \"height\": ${dialogHeight},"
+        info "dialogHeight ${dialogHeight} is less than 500; using Inspect Mode Preset 3 (Compact) at 900x${dialogHeight}"
+    fi
     
     # Create the full JSON configuration
     # Note: Inspect Mode uses dual monitoring when Installomator items are selected:
@@ -2056,13 +2073,14 @@ function createSYMLiteInspectConfig() {
     # - paths: Watches file system via FSEvents for completion detection (all item types)
     if ! /bin/cat > "${dialogInspectModeJSONFile}" <<EOF
 {
-    "preset": "preset${organizationPreset}",
+    "preset": "preset${inspectPreset}",
     "title": "$(escapeJSONString "${dialogTitle}")",
     "message": "$(escapeJSONString "${messageText}")",
     "icon": "$(escapeJSONString "${mainDialogIcon}")",
     "overlayicon": "$(escapeJSONString "${organizationOverlayiconURL}")",
     "iconsize": 120,
     "size": "compact",
+${inspectWindowSizeJSON}
     "options": {
         "moveable": true,
         "windowbuttons": "min"
@@ -2077,10 +2095,10 @@ ${sideMessageJSON}
     ],
     "sideInterval": 8,
     "highlightColor": "#51a3ef",
-    "button1text": "Please wait...",
+${inspectButton1TextJSON}
     "button1disabled": true,
     "autoEnableButton": true,
-    "autoEnableButtonText": "Review Results",
+    "autoEnableButtonText": "Continue",
     "items": [
         ${itemsJSON}
     ]
@@ -3237,7 +3255,7 @@ function executeSYMLiteItems() {
 
         if kill -0 "${dialogPID}" 2>/dev/null; then
             warning "Dialog did not close after ${maxWait} seconds; requesting quit"
-            closeInspectMode "timeout waiting for Review Results"
+            closeInspectMode "timeout waiting for Continue"
         fi
 
         dialogPID=""
