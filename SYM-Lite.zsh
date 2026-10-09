@@ -16,7 +16,7 @@
 #
 # HISTORY
 #
-# Version 1.6.0b3, 08-Oct-2026, Dan K. Snelson (@dan-snelson)
+# Version 1.6.0b4, 09-Oct-2026, Dan K. Snelson (@dan-snelson)
 # - When `git` is missing (no Xcode, Command Line Tools, or brewed `git`), SYM-Lite installs Apple's Command Line Tools as `root` via `softwareupdate` so Homebrew isn't left degraded; logic adapted from Rich Trouton's `install_xcode_command_line_tools.sh`; disable with `homebrewAutoInstallCommandLineTools="false"` (Issue #27)
 # - Command Line Tools install runs once per run, before the Installomator `homebrew` label installs Homebrew (Homebrew.pkg's postinstall resets its `git` checkout only when Command Line Tools `git` exists; otherwise `brew --version` reports `-dirty`), after the label skips an existing Homebrew, and before the first Homebrew item; it needs no logged-in user
 # - Pre-flight logs whether `git` is available for Homebrew
@@ -29,6 +29,7 @@
 # - When Parameter 6 is less than `500`, Inspect Mode uses Preset 3 (Compact) instead of `organizationPreset`, sized to match the selection and completion dialogs (900 x Parameter 6)
 # - Inspect Mode's completion button reads "Continue" (was "Review Results"); Preset 3 omits "Please wait..." because it ignores `autoEnableButtonText` when `button1text` is set
 # - Installomator `codex` validation path is now `/Applications/ChatGPT.app` (where the label installs), so Inspect Mode marks it complete and enables the button
+# - Added Installomator labels: Oracle MySQL Workbench CE (`mysqlworkbenchce`), OutSystems Service Studio (`outsystemsservicestudio`)
 #
 ####################################################################################################
 
@@ -45,7 +46,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.6.0b3"
+scriptVersion="1.6.0b4"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -158,9 +159,11 @@ installomatorLabels=(
     "firefoxesr | Firefox ESR | /Applications/Firefox.app | https://appinstallers-packages.services.jamfcloud.com/icons/0B3.png"
     "homebrew | Homebrew | ${homebrewPrefix}/bin/brew | https://usw2.ics.services.jamfcloud.com/icon/hash_9edff3eb98482a1aaf17f8560488f7b500cc7dc64955b8a9027b3801cab0fd82"
     "jetbrainsintellijidea | IntelliJ IDEA | /Applications/IntelliJ IDEA.app | https://usw2.ics.services.jamfcloud.com/icon/hash_f669d73acc06297e1fc2f65245cfbdace03263f81aebf95444a8360a101b239d"
+    "mysqlworkbenchce | Oracle MySQL Workbench CE | /Applications/MySQL Workbench CE.app | https://use1.ics.services.jamfcloud.com/icon/hash_71e24673da893103d14bd22e445a8754120b3795d8dd6a811564b809a169f0c6"
     "nova | Nova | /Applications/Nova.app | https://use1.ics.services.jamfcloud.com/icon/hash_2386d11c960c252a4db75f49b5e82e5ba7adc1394a446e6ce11a91227d842c37"
     "otter | Otter AI | /Applications/Otter.app | https://use1.ics.services.jamfcloud.com/icon/hash_c53dfc2bc61084eec32f9825e57f836b181c2d9fb85ba5a9693ab11bc6f9ec31"
     "pique | Pique | /Applications/Pique.app | https://usw2.ics.services.jamfcloud.com/icon/hash_7d2539860cca6ec5ea5a71cba2aee7d93b9534e4267c16f73c7035f3dc025b9c"
+    "outsystemsservicestudio | OutSystems Service Studio | /Applications/ServiceStudio.app | https://use1.ics.services.jamfcloud.com/icon/hash_4747cc71bdb457ec09db67492b2db22943939cd4257f143478413df5ba21b3a8"
     "visualstudiocode | Visual Studio Code | /Applications/Visual Studio Code.app | https://appinstallers-packages.services.jamfcloud.com/icons/0AF.png"
 )
 
