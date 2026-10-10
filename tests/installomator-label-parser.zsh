@@ -1,5 +1,23 @@
 #!/bin/zsh --no-rcs
 
+####################################################################################################
+#
+# SYM-Lite: Installomator Label Parser Regression Tests
+#
+# - Extracts `parseInstallomatorItem`, `getAvailableInstallomatorLabels`, and
+#   `normalizeInstallomatorLabels` directly from SYM-Lite.zsh, so tests always exercise production code
+# - Runs them against temporary Installomator fixtures to verify:
+#     - Single-line and multiline (`|\` continuation) case arms are parsed
+#     - Nested case arms and reserved labels (`longversion`, `valuesfromarguments`, `*`) are excluded
+#     - Configured labels survive normalization; an untrusted Installomator hides all labels
+#     - An incomplete continuation arm returns a parse failure
+# - Stubs logging and `validateInstallomatorOwnership` (fixtures are user-owned; CI runs on Linux)
+# - Never executes Installomator or mutates host state; fixtures live in a temp directory removed on exit
+#
+# Usage: zsh tests/installomator-label-parser.zsh (also run by .github/workflows/security-scan.yml)
+#
+####################################################################################################
+
 setopt ERR_EXIT
 setopt NO_UNSET
 setopt PIPE_FAIL
@@ -19,6 +37,10 @@ function fail() {
     print -u2 -r -- "FAIL: $1"
     exit 1
 }
+
+# Script Version (read from SYM-Lite.zsh so it never drifts)
+scriptVersion="$(/usr/bin/sed -n 's/^scriptVersion="\(.*\)"$/\1/p' "${scriptPath}")"
+[[ -n "${scriptVersion}" ]] || fail "Unable to read scriptVersion from SYM-Lite.zsh"
 
 function extractFunction() {
     local functionName="$1"
@@ -145,4 +167,4 @@ if getAvailableInstallomatorLabels >/dev/null 2>&1; then
     fail "Incomplete continuation arm did not return a parse failure"
 fi
 
-print -r -- "PASS: Installomator label parser regression tests"
+print -r -- "PASS: Installomator label parser regression tests (SYM-Lite ${scriptVersion})"

@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite) [![swiftDialog](https://img.shields.io/badge/swiftDialog-Enabled-blue)](https://swiftdialog.app) [![Semgrep Security Scan](https://img.shields.io/badge/security%20scanned%20by-Semgrep-00C7B7?style=flat&logo=semgrep&logoColor=white)](https://semgrep.dev)
 
-# SYM-Lite (1.6.0b6)
+# SYM-Lite (1.6.0)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) and [Homebrew](https://brew.sh) casks / formulas, as well as Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies), all through a unified [swiftDialog](https://swiftdialog.app) selection and reporting interface.
 
@@ -196,6 +196,33 @@ If the user clicks `Cancel` in the selection dialog, interactive mode exits clea
 ### Limit the Interactive Selection Dialog
 
 Parameter 5 (`operationsCSV`) is optional in interactive mode. When it's set, the selection dialog shows only the listed item IDs, so one copy of SYM-Lite can back several focused Self Service policies.
+
+```zsh
+sudo /path/to/SYM-Lite.zsh "" "" "" "interactive" "homebrew" 375
+```
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="images/SYML-00007.png" alt="Select items to install" width="300">
+    </td>
+    <td align="center">
+      <img src="images/SYML-00008.png" alt="Installing selected items" width="300">
+    </td>
+    <td align="center">
+      <img src="images/SYML-00009.png" alt="Installing selected items continued" width="300">
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="images/SYML-00010.png" alt="Installation complete" width="300">
+    </td>
+    <td align="center">
+      <img src="images/SYML-00011.png" alt="Processing completed" width="300">
+    </td>
+  </tr>
+</table>
+
 
 **Via Jamf Policy (e.g., "Developer Tools"):**
 - Parameter 4: `interactive`
@@ -402,6 +429,6 @@ Item IDs must be unique across `installomatorLabels`, `jamfPolicyItems`, and `ho
 
 ---
 
-**Version:** 1.6.0b6  
+**Version:** 1.6.0  
 **Date:** 08-Oct-2026  
 **Author:** Dan K. Snelson (@dan-snelson)

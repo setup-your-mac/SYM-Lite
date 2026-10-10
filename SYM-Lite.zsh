@@ -16,7 +16,7 @@
 #
 # HISTORY
 #
-# Version 1.6.0b6, 09-Oct-2026, Dan K. Snelson (@dan-snelson)
+# Version 1.6.0, 10-Oct-2026, Dan K. Snelson (@dan-snelson)
 # - When `git` is missing (no Xcode, Command Line Tools, or brewed `git`), SYM-Lite installs Apple's Command Line Tools as `root` via `softwareupdate` so Homebrew isn't left degraded; logic adapted from Rich Trouton's `install_xcode_command_line_tools.sh`; disable with `homebrewAutoInstallCommandLineTools="false"` (Issue #27)
 # - Command Line Tools install runs once per run, before the Installomator `homebrew` label installs Homebrew (Homebrew.pkg's postinstall resets its `git` checkout only when Command Line Tools `git` exists; otherwise `brew --version` reports `-dirty`), after the label skips an existing Homebrew, and before the first Homebrew item; it needs no logged-in user
 # - Pre-flight logs whether `git` is available for Homebrew
@@ -46,7 +46,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.6.0b6"
+scriptVersion="1.6.0"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
