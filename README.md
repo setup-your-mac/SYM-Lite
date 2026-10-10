@@ -241,7 +241,7 @@ sudo /path/to/SYM-Lite.zsh "" "" "" interactive "cask:codex,formula:direnv" 450
 - If Parameter 5 contains no valid item IDs, SYM-Lite logs the valid item IDs for the run, shows the "no selectable items" dialog, and exits without falling back to the full list
 - Homebrew items are hidden when `brew` is not installed, so a Homebrew-focused list should also include the `homebrew` Installomator label; once Homebrew is installed, run the policy again to see the casks and formulae
 - Parameter 6 (`dialogHeight`) sets the selection and completion dialog height in pixels (default: `675`); use a smaller value for short lists. Invalid values log a `[WARNING]` and fall back to `675`; silent mode ignores it
-- When Parameter 6 is less than `500`, Inspect Mode switches to [Preset 3 (Compact)](https://swiftdialog.app/advanced/inspect/preset3/) instead of `organizationPreset`, at the same 900-pixel width and Parameter 6 height as the selection and completion dialogs; its button shows a disabled "Continue" until items complete.; Preset 3 shows only the first side message (no rotation)
+- When Parameter 6 is less than `500`, Inspect Mode switches to [Preset 3 (Compact)](https://swiftdialog.app/advanced/inspect/preset3/) instead of `organizationPreset`, at the same 900-pixel width and Parameter 6 height as the selection and completion dialogs; its button shows a disabled "Continue" until items complete. Preset 3 shows only the first side message (no rotation)
 
 ### Silent Mode
 

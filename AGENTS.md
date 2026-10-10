@@ -12,7 +12,9 @@ This file codifies project rules, boundaries, workflows, and repeatable skills. 
 ## Key Commands
 - Validate syntax after every Zsh edit: `zsh -n SYM-Lite.zsh`
 - Inspect current script version: `rg -n '^scriptVersion=' SYM-Lite.zsh`
-- Inspect current item inventories: `rg -n '^(installomatorLabels|jamfPolicyItems|homebrewItems)=\\(' SYM-Lite.zsh`
+- Run Installomator label parser regression tests (temp fixtures only; no host mutation): `zsh tests/installomator-label-parser.zsh`
+- Inspect current item inventories: `rg -n '^(installomatorLabels|jamfPolicyItems|homebrewItems)=\(' SYM-Lite.zsh`
+- Find every version reference before bump: `rg -n '<old version>' -g '!.git' .`
 - Review canonical runtime docs before behavior edits: `sed -n '1,240p' AGENTS.md`
 
 ## Agent Workflow
@@ -31,7 +33,7 @@ Invoke relevant skill name during planning.
 
 ### Add New Executable Item Skill
 1. Start from matching array format in `installomatorLabels`, `jamfPolicyItems`, or `homebrewItems`.
-2. Keep item list sorted by display-name intent because UI merges and sorts groups together.
+2. Keep item list sorted case-insensitively by full Display Name (e.g., "OpenAI ChatGPT Codex" under O, not C) because UI merges and sorts groups together.
 3. Set real `validationPath`; skip logic and Inspect Mode completion depend on it.
 4. Validate affected parsing and execution flow in `SYM-Lite.zsh`.
 5. Update `README.md` if user-visible configuration or behavior changed.
@@ -46,14 +48,16 @@ Invoke relevant skill name during planning.
 
 ### Release Prep Skill
 1. Keep `scriptVersion`, `CHANGELOG.md`, and released behavior aligned.
-2. Update only files explicitly in scope.
-3. Re-check syntax and release-facing docs.
-4. Keep `SYM-Lite.zsh` `HISTORY` section limited to current in-development version only.
+2. Version bump also updates `README.md` title (`# SYM-Lite (x.y.z)`) and footer (`**Version:** x.y.z`); `SECURITY.md` "Current stable/beta reference" tracks latest published release, so bump it only during release prep.
+3. Update only files explicitly in scope.
+4. Re-check syntax, regression tests, and release-facing docs.
+5. Keep `SYM-Lite.zsh` `HISTORY` section limited to current in-development version only.
 
 ## Boundaries
 **Always allowed without asking**
 - Read any repository file.
 - Run `zsh -n SYM-Lite.zsh`.
+- Run `zsh tests/installomator-label-parser.zsh`.
 - Make small targeted doc or script edits that follow rules below.
 - Inspect arrays, functions, and logs referenced in code without executing live install workflows.
 
@@ -62,6 +66,7 @@ Invoke relevant skill name during planning.
 - Run commands that can install software, trigger Jamf policies, update Homebrew metadata, or otherwise mutate host state outside repo.
 - Change default operation mode, parameter semantics, logging contract, or restart behavior.
 - Rebuild release notes or prepare release versioning not explicitly requested.
+- Run `.deploySYMLite.zsh` (local, gitignored; writes `VERSION.txt`, signs and pushes commit, force-pushes tag, creates draft GitHub release).
 
 **Never do**
 - Hardcode secrets, tokens, org-private endpoints, or credentials.
@@ -105,7 +110,9 @@ Out of scope:
 - `README.md`: operator-facing usage, configuration, and behavior guide
 - `CHANGELOG.md`: canonical long-term release history
 - `SECURITY.md`: security policy and reporting process
-- `.github/workflows/security-scan.yml`: Semgrep, Gitleaks, `zsh -n`, and ShellCheck automation
+- `tests/installomator-label-parser.zsh`: regression tests; extracts `parseInstallomatorItem`, `getAvailableInstallomatorLabels`, and `normalizeInstallomatorLabels` from `SYM-Lite.zsh` (stubs logging and `validateInstallomatorOwnership`) and runs them against temp Installomator fixtures
+- `.github/workflows/security-scan.yml`: Semgrep, Gitleaks, `zsh -n`, regression tests, and ShellCheck automation
+- `VERSION.txt`, `.deploySYMLite.zsh`: local-only (gitignored) release tooling
 - `.github/copilot-instructions.md`: secondary agent instructions; do not let it override this file
 
 ## Current Runtime Hotspots
@@ -131,7 +138,7 @@ Out of scope:
 - Do not add new production dependencies without explicit approval.
 - Keep durable repo rules near top of this file; avoid timestamps, counters, or ephemeral task notes in stable sections.
 - Preserve existing script style unless strong reason exists to refactor.
-- Keep `installomatorLabels`, `jamfPolicyItems`, and `homebrewItems` sorted by display-name intent.
+- Keep `installomatorLabels`, `jamfPolicyItems`, and `homebrewItems` sorted case-insensitively by full Display Name.
 - If behavior, configuration semantics, or environment assumptions change, update `README.md` in same pass.
 - `CHANGELOG.md` is long-term history; keep its top entry in sync with `scriptVersion` and `HISTORY`.
 - When `SYM-Lite.zsh` `HISTORY` changes, add or update matching `CHANGELOG.md` entry in same pass.
@@ -162,7 +169,7 @@ Match established `SYM-Lite.zsh` style unless user explicitly asks otherwise.
 - Minimum swiftDialog version is `3.1.0.4994`.
 - Default Installomator path: `/Library/Application Support/AppAutoPatch/Installomator/Installomator.sh`
 - Default Jamf binary path: `/usr/local/jamf/bin/jamf`
-- Homebrew detection prefers `/opt/homebrew/bin/brew`, then `/usr/local/bin/brew`
+- Homebrew detection uses `brewPath` when set, else prefers `/opt/homebrew/bin/brew`, then `/usr/local/bin/brew`
 - Default logging paths: `/var/log/org.churchofjesuschrist.log` and `/var/log/Installomator.log`
 
 ## Quality Bar
@@ -174,11 +181,12 @@ Match established `SYM-Lite.zsh` style unless user explicitly asks otherwise.
 
 ## Required Validation
 1. Run `zsh -n` on every modified Zsh script.
-2. For script changes, review touched paths for obvious regressions in both `interactive` and `silent` flows.
-3. For docs-only changes, review Markdown rendering, terminology, and cross-file consistency.
-4. Update `README.md` when behavior, configuration, environment assumptions, or operator workflow changes.
-5. Update `CHANGELOG.md` whenever `scriptVersion` or `HISTORY` changes; top entry must mirror current `HISTORY`.
-6. Do not add new production dependencies without explicit approval.
+2. Run `zsh tests/installomator-label-parser.zsh` when touching Installomator parsing, label normalization, or ownership checks (CI runs it on push and PR to `main` and `development`).
+3. For script changes, review touched paths for obvious regressions in both `interactive` and `silent` flows.
+4. For docs-only changes, review Markdown rendering, terminology, and cross-file consistency.
+5. Update `README.md` when behavior, configuration, environment assumptions, or operator workflow changes.
+6. Update `CHANGELOG.md` whenever `scriptVersion` or `HISTORY` changes; top entry must mirror current `HISTORY`.
+7. Do not add new production dependencies without explicit approval.
 
 ## Release Checklist
 Apply only for release prep.
