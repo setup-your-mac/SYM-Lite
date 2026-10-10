@@ -16,13 +16,13 @@
 #
 # HISTORY
 #
-# Version 1.6.0b4, 09-Oct-2026, Dan K. Snelson (@dan-snelson)
+# Version 1.6.0b6, 09-Oct-2026, Dan K. Snelson (@dan-snelson)
 # - When `git` is missing (no Xcode, Command Line Tools, or brewed `git`), SYM-Lite installs Apple's Command Line Tools as `root` via `softwareupdate` so Homebrew isn't left degraded; logic adapted from Rich Trouton's `install_xcode_command_line_tools.sh`; disable with `homebrewAutoInstallCommandLineTools="false"` (Issue #27)
 # - Command Line Tools install runs once per run, before the Installomator `homebrew` label installs Homebrew (Homebrew.pkg's postinstall resets its `git` checkout only when Command Line Tools `git` exists; otherwise `brew --version` reports `-dirty`), after the label skips an existing Homebrew, and before the first Homebrew item; it needs no logged-in user
 # - Pre-flight logs whether `git` is available for Homebrew
 # - With `homebrewUpdateBeforeInstall="true"`, a still-missing `git` skips `brew update` with one `[WARNING]` instead of failing every Homebrew item
 # - The Installomator `homebrew` completion row adds "git is missing, so brew update is unavailable" when Command Line Tools couldn't be installed
-# - Inspect Mode shows a "Command Line Tools (for Homebrew)" row where the install runs (before the `homebrew` label or the first Homebrew item); it completes once `git` is available, and a side message notes it can take several minutes
+# - Inspect Mode shows a "Command Line Tools (for Homebrew)" row where the install runs (before the `homebrew` label or the first Homebrew item); it completes once `git` is available, and its side message leads the list (Preset 3 shows only the first side message) noting it can take several minutes with no visible progress
 # - After the Installomator `homebrew` label (or a Command Line Tools install), `brew --version` is logged once per run; a `-dirty` checkout logs a `[WARNING]` suggesting `brew update-reset`
 # - Command Line Tools progress is logged: `softwareupdate` scan and install output stream to the log as `softwareupdate (CLT scan): …` and `softwareupdate (CLT): …`, with elapsed seconds for each step
 # - Selection and completion dialog height is now Parameter 6 (default: `675`), so a short `operationsCSV` list can use a smaller window
@@ -46,7 +46,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.6.0b4"
+scriptVersion="1.6.0b6"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -2005,6 +2005,13 @@ function createSYMLiteInspectConfig() {
     [[ ${#selectedHomebrewItems[@]} -gt 0 ]] && hasHomebrew="true"
 
     cachePaths+=("/Library/Managed Installs/Cache")
+
+    # Command Line Tools install runs first and takes minutes, so lead with its side message
+    # (Preset 3 shows only the first side message; swiftDialog doesn't rotate them there)
+    if [[ -n "${commandLineToolsInspectMarkerFile}" ]]; then
+        sideMessages+=("Apple’s Command Line Tools for Homebrew can take several minutes to install (with no visible progress).")
+    fi
+
     sideMessages+=("Thank you for your patience.")
     sideMessages+=("Progress is monitored by watching for files to appear.")
     sideMessages+=("Please wait while items are being processed.")
@@ -2033,10 +2040,6 @@ function createSYMLiteInspectConfig() {
         [[ -n "${loggedInUserHomeDirectory}" ]] && cachePaths+=("${loggedInUserHomeDirectory}/Library/Caches/Homebrew")
         cachePaths+=("/Library/Caches/Homebrew")
         sideMessages+=("Approved Homebrew packages are being installed in the logged-in user context.")
-    fi
-
-    if [[ -n "${commandLineToolsInspectMarkerFile}" ]]; then
-        sideMessages+=("Apple's Command Line Tools for Homebrew can take several minutes to install.")
     fi
 
     cachePathsJSON="$(buildJSONStringArray "${cachePaths[@]}")"
