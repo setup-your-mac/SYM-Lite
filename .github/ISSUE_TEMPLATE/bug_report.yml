@@ -37,7 +37,7 @@ body:
     attributes:
       label: Installed macOS version
       description: From About This Mac or `sw_vers -productVersion`
-      placeholder: "e.g. 15.5"
+      placeholder: "e.g. 27.0.1"
     validations:
       required: true
 
@@ -46,7 +46,7 @@ body:
     attributes:
       label: SYM-Lite version tested
       description: Which version or commit did you run?
-      placeholder: "e.g. 1.0.1 or main @ abc1234"
+      placeholder: "e.g. 1.6.0 or main @ abc1234"
     validations:
       required: true
 
@@ -55,7 +55,7 @@ body:
     attributes:
       label: swiftDialog version
       description: From `dialog --version`
-      placeholder: "e.g. 3.0.1.4955"
+      placeholder: "e.g. 3.1.1.4997"
     validations:
       required: true
 
@@ -64,21 +64,21 @@ body:
     attributes:
       label: Installomator version, if relevant
       description: From your active `Installomator.sh` or local deployment notes
-      placeholder: "e.g. 10.8"
+      placeholder: "e.g. 10.10"
 
   - type: input
     id: jamf-version
     attributes:
       label: Jamf binary version, if relevant
       description: From `jamf version`
-      placeholder: "e.g. 11.18.0"
+      placeholder: "e.g. 11.32.1"
 
   - type: input
     id: brew-version
     attributes:
       label: Homebrew version, if relevant
       description: From `brew --version`
-      placeholder: "e.g. Homebrew 4.4.31"
+      placeholder: "e.g. Homebrew 7.0.9"
 
   - type: dropdown
     id: execution-path

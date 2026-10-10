@@ -16,9 +16,20 @@
 #
 # HISTORY
 #
-# Version 1.5.1, 06-Oct-2026, Dan K. Snelson (@dan-snelson)
-# - Homebrew installs that exit 0 but report child-process or permission errors (e.g., shell completions under `${homebrewPrefix}/share`) now log a `[WARNING]` and show "Ready to use; Homebrew reported warnings" (Issue #24)
-# - Before the first Homebrew install of each run, SYM-Lite creates `share/zsh/site-functions` and `share/fish/vendor_completions.d` under the brew prefix as the Homebrew user, because brew's completion child process can't create them; disable with `homebrewCreateCompletionDirectories="false"` (Issue #24)
+# Version 1.6.0, 10-Oct-2026, Dan K. Snelson (@dan-snelson)
+# - When `git` is missing (no Xcode, Command Line Tools, or brewed `git`), SYM-Lite installs Apple's Command Line Tools as `root` via `softwareupdate` so Homebrew isn't left degraded; logic adapted from Rich Trouton's `install_xcode_command_line_tools.sh`; disable with `homebrewAutoInstallCommandLineTools="false"` (Issue #27)
+# - Command Line Tools install runs once per run, before the Installomator `homebrew` label installs Homebrew (Homebrew.pkg's postinstall resets its `git` checkout only when Command Line Tools `git` exists; otherwise `brew --version` reports `-dirty`), after the label skips an existing Homebrew, and before the first Homebrew item; it needs no logged-in user
+# - Pre-flight logs whether `git` is available for Homebrew
+# - With `homebrewUpdateBeforeInstall="true"`, a still-missing `git` skips `brew update` with one `[WARNING]` instead of failing every Homebrew item
+# - The Installomator `homebrew` completion row adds "git is missing, so brew update is unavailable" when Command Line Tools couldn't be installed
+# - Inspect Mode shows a "Command Line Tools (for Homebrew)" row where the install runs (before the `homebrew` label or the first Homebrew item); it completes once `git` is available, and its side message leads the list (Preset 3 shows only the first side message) noting it can take several minutes with no visible progress
+# - After the Installomator `homebrew` label (or a Command Line Tools install), `brew --version` is logged once per run; a `-dirty` checkout logs a `[WARNING]` suggesting `brew update-reset`
+# - Command Line Tools progress is logged: `softwareupdate` scan and install output stream to the log as `softwareupdate (CLT scan): …` and `softwareupdate (CLT): …`, with elapsed seconds for each step
+# - Selection and completion dialog height is now Parameter 6 (default: `675`), so a short `operationsCSV` list can use a smaller window
+# - When Parameter 6 is less than `500`, Inspect Mode uses Preset 3 (Compact) instead of `organizationPreset`, sized to match the selection and completion dialogs (900 x Parameter 6)
+# - Inspect Mode's completion button reads "Continue" (was "Review Results"); Preset 3 omits "Please wait..." because it ignores `autoEnableButtonText` when `button1text` is set
+# - Installomator `codex` validation path is now `/Applications/ChatGPT.app` (where the label installs), so Inspect Mode marks it complete and enables the button
+# - Added Installomator labels: Oracle MySQL Workbench CE (`mysqlworkbenchce`), OutSystems Service Studio (`outsystemsservicestudio`)
 #
 ####################################################################################################
 
@@ -35,7 +46,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.5.1"
+scriptVersion="1.6.0"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -68,6 +79,7 @@ autoload -Uz is-at-least
 operationMode="${4:-"interactive"}"     # Parameter 4: Operation Mode [ interactive (default) | silent ]
 operationMode="${operationMode:l}"
 operationsCSV="${5:-""}"                # Parameter 5: Comma-separated list of item IDs (silent: items to run; interactive: optional selection dialog allowlist)
+dialogHeight="${6:-"675"}"              # Parameter 6: Selection and completion dialog height, in pixels (default: 675)
 
 
 
@@ -98,6 +110,9 @@ homebrewUpdateBeforeInstall="false"
 
 # Create zsh and fish completion directories under the brew prefix (as the Homebrew user) before the first Homebrew install
 homebrewCreateCompletionDirectories="true"
+
+# Install Apple's Command Line Tools (as root, via softwareupdate) when git is missing, so Homebrew isn't degraded
+homebrewAutoInstallCommandLineTools="true"
 
 # Trust configured third-party tap items (`user/tap/name`) before install; official taps are always trusted
 homebrewAutoTrustItems="true"
@@ -139,13 +154,15 @@ installomatorLabels=(
     "awsvpnclient | AWS VPN Client | /Applications/AWS VPN Client/AWS VPN Client.app | https://usw2.ics.services.jamfcloud.com/icon/hash_1d1bef5523d9f7eca5a45f2db9a63732e85edb5f914220807ca740ba7c4881b9"
     "bruno | Bruno | /Applications/Bruno.app | https://usw2.ics.services.jamfcloud.com/icon/hash_48501630ad2f5dd5de3e055d6acdda07682895440cad366ee7befac71cab1399"
     "charles | Charles Proxy | /Applications/Charles.app | https://use2.ics.services.jamfcloud.com/icon/hash_59b395ca81889a6d83deda8e6babc5ae4bc5931d36a72b738fe30b84d027593d"
-    "codex | OpenAI ChatGPT Codex | /Applications/ChatGPT.localized/ChatGPT.app | https://usw2.ics.services.jamfcloud.com/icon/hash_be9d2917e81980484f875d9056e5e4aa45d59dffa7b03c20f8dbb5137e96ee26"
     "docker | Docker | /Applications/Docker.app | https://usw2.ics.services.jamfcloud.com/icon/hash_a344dca5fdc0e86822e8f21ec91088e6591b1e292bdcebdee1281fbd794c2724"
     "firefoxesr | Firefox ESR | /Applications/Firefox.app | https://appinstallers-packages.services.jamfcloud.com/icons/0B3.png"
     "homebrew | Homebrew | ${homebrewPrefix}/bin/brew | https://usw2.ics.services.jamfcloud.com/icon/hash_9edff3eb98482a1aaf17f8560488f7b500cc7dc64955b8a9027b3801cab0fd82"
     "jetbrainsintellijidea | IntelliJ IDEA | /Applications/IntelliJ IDEA.app | https://usw2.ics.services.jamfcloud.com/icon/hash_f669d73acc06297e1fc2f65245cfbdace03263f81aebf95444a8360a101b239d"
     "nova | Nova | /Applications/Nova.app | https://use1.ics.services.jamfcloud.com/icon/hash_2386d11c960c252a4db75f49b5e82e5ba7adc1394a446e6ce11a91227d842c37"
+    "codex | OpenAI ChatGPT Codex | /Applications/ChatGPT.app | https://usw2.ics.services.jamfcloud.com/icon/hash_be9d2917e81980484f875d9056e5e4aa45d59dffa7b03c20f8dbb5137e96ee26"
+    "mysqlworkbenchce | Oracle MySQL Workbench CE | /Applications/MySQL Workbench CE.app | https://use1.ics.services.jamfcloud.com/icon/hash_71e24673da893103d14bd22e445a8754120b3795d8dd6a811564b809a169f0c6"
     "otter | Otter AI | /Applications/Otter.app | https://use1.ics.services.jamfcloud.com/icon/hash_c53dfc2bc61084eec32f9825e57f836b181c2d9fb85ba5a9693ab11bc6f9ec31"
+    "outsystemsservicestudio | OutSystems Service Studio | /Applications/ServiceStudio.app | https://use1.ics.services.jamfcloud.com/icon/hash_4747cc71bdb457ec09db67492b2db22943939cd4257f143478413df5ba21b3a8"
     "pique | Pique | /Applications/Pique.app | https://usw2.ics.services.jamfcloud.com/icon/hash_7d2539860cca6ec5ea5a71cba2aee7d93b9534e4267c16f73c7035f3dc025b9c"
     "visualstudiocode | Visual Studio Code | /Applications/Visual Studio Code.app | https://appinstallers-packages.services.jamfcloud.com/icons/0AF.png"
 )
@@ -220,6 +237,12 @@ effectiveBrewPath=""
 homebrewUpdateAttempted="false"
 homebrewUpdateSucceeded="false"
 homebrewCompletionDirectoriesAttempted="false"
+homebrewGitPath=""
+commandLineToolsAttempted="false"
+commandLineToolsTriggerFile="/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress"
+commandLineToolsTriggerFileCreated="false"
+commandLineToolsInspectMarkerFile=""
+homebrewVersionLogged="false"
 homebrewCommandEnvironment=()
 loggedInUserIsAdmin=""
 homebrewExecutionUser=""
@@ -253,6 +276,12 @@ function cleanup() {
     fi
 
     removeDialogCommandFile
+
+    # Remove the Command Line Tools trigger file only if SYM-Lite created it
+    if [[ "${commandLineToolsTriggerFileCreated}" == "true" ]]; then
+        rm -f -- "${commandLineToolsTriggerFile}" 2>/dev/null
+        commandLineToolsTriggerFileCreated="false"
+    fi
 
     if [[ -n "${completionDialogJSONFile}" && -e "${completionDialogJSONFile}" ]]; then
         rm -f -- "${completionDialogJSONFile}" 2>/dev/null
@@ -914,11 +943,115 @@ function detectHomebrewBinary() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Resolve git for Homebrew
+# Sets homebrewGitPath (empty when no usable git is found)
+# Returns: 0 if git is found, 1 otherwise
+# Uses `-x` tests only; never runs /usr/bin/git, whose CLT stub would prompt the logged-in user
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function resolveHomebrewGitPath() {
+    local developerDirectory=""
+    local candidatePath=""
+    local -a candidatePaths=()
+
+    homebrewGitPath=""
+
+    developerDirectory="$( /usr/bin/xcode-select -print-path 2>/dev/null )"
+    if [[ -n "${developerDirectory}" && "${developerDirectory}" != "/" ]]; then
+        candidatePaths+=("${developerDirectory}/usr/bin/git")
+    fi
+
+    candidatePaths+=(
+        "/Library/Developer/CommandLineTools/usr/bin/git"
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/git"
+    )
+
+    # A brewed git also satisfies Homebrew (`${effectiveBrewPath:h:h}` of an empty path is ".", so skip it)
+    if [[ -n "${effectiveBrewPath}" ]]; then
+        candidatePaths+=("${effectiveBrewPath:h:h}/bin/git")
+    fi
+
+    for candidatePath in "${candidatePaths[@]}"; do
+        if [[ -f "${candidatePath}" && -x "${candidatePath}" ]]; then
+            homebrewGitPath="${candidatePath}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Check Whether Command Line Tools Bootstrap Is Expected
+# Returns: 0 when the setting is enabled, Homebrew work is selected (Homebrew items or the
+# Installomator `homebrew` label), and git is missing; 1 otherwise
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function isCommandLineToolsBootstrapExpected() {
+    if [[ "${homebrewAutoInstallCommandLineTools:l}" != "true" || "${enableHomebrewItems:l}" != "true" ]]; then
+        return 1
+    fi
+
+    if [[ ${#selectedHomebrewItems[@]} -eq 0 && ${selectedInstallomatorLabels[(Ie)homebrew]} -eq 0 ]]; then
+        return 1
+    fi
+
+    if resolveHomebrewGitPath; then
+        return 1
+    fi
+
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Build Command Line Tools Inspect Mode Item
+# Input: guiIndex
+# Output: Inspect Mode item JSON; completes when commandLineToolsInspectMarkerFile appears
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function buildCommandLineToolsInspectItemJSON() {
+    local guiIndex="$1"
+
+    print -r -- "{
+            \"id\": \"commandLineTools\",
+            \"displayName\": \"Command Line Tools (for Homebrew)\",
+            \"guiIndex\": ${guiIndex},
+            \"paths\": [\"$(escapeJSONString "${commandLineToolsInspectMarkerFile}")\"],
+            \"icon\": \"SF=terminal\"
+        }"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Mark Command Line Tools Inspect Mode Item Complete
+# Writes the marker (root-owned runtime directory) only once git is available, so a failed install
+# leaves the row waiting like any other failed item; git from Xcode or brew also completes it
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function markCommandLineToolsInspectItemComplete() {
+    if [[ -z "${commandLineToolsInspectMarkerFile}" || -e "${commandLineToolsInspectMarkerFile}" ]]; then
+        return 0
+    fi
+
+    if resolveHomebrewGitPath; then
+        : > "${commandLineToolsInspectMarkerFile}" 2>/dev/null
+    fi
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Normalize Homebrew Item Availability
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 function normalizeHomebrewItems() {
     local homebrewItemsSetting="${enableHomebrewItems:l}"
+    local commandLineToolsSetting="${homebrewAutoInstallCommandLineTools:l}"
     local detectedBrewPath=""
     local filteredItemCount=0
     local item=""
@@ -928,6 +1061,11 @@ function normalizeHomebrewItems() {
         warning "Invalid enableHomebrewItems value '${enableHomebrewItems}'; defaulting to true"
         enableHomebrewItems="true"
         homebrewItemsSetting="true"
+    fi
+
+    if [[ "${commandLineToolsSetting}" != "true" && "${commandLineToolsSetting}" != "false" ]]; then
+        warning "Invalid homebrewAutoInstallCommandLineTools value '${homebrewAutoInstallCommandLineTools}'; defaulting to true"
+        homebrewAutoInstallCommandLineTools="true"
     fi
 
     if [[ "${homebrewItemsSetting}" != "true" ]]; then
@@ -962,6 +1100,15 @@ function normalizeHomebrewItems() {
 
     if [[ "${effectiveBrewPath:h:h}" != "${homebrewPrefix}" ]]; then
         warning "Homebrew binary ${effectiveBrewPath} does not match validation prefix ${homebrewPrefix}; skip and completion checks for Homebrew items may be wrong"
+    fi
+
+    # Log only; Command Line Tools install waits until first Homebrew use so the selection dialog isn't delayed
+    if resolveHomebrewGitPath; then
+        preFlight "git available for Homebrew at ${homebrewGitPath}"
+    elif [[ "${homebrewAutoInstallCommandLineTools:l}" == "true" ]]; then
+        warning "git not found; will install Command Line Tools before first Homebrew use"
+    else
+        warning "git not found; brew update and third-party taps are unavailable (homebrewAutoInstallCommandLineTools=false)"
     fi
 
     if ! refreshHomebrewExecutionUser; then
@@ -1633,6 +1780,14 @@ case "${operationMode}" in
     * ) fatal "Invalid operationMode '${operationMode}'; expected 'interactive' or 'silent'" ;;
 esac
 
+dialogHeight="${dialogHeight//[[:space:]]/}"
+if [[ "${dialogHeight}" =~ ^[0-9]+$ ]] && (( 10#${dialogHeight} > 0 )); then
+    dialogHeight="$(( 10#${dialogHeight} ))"
+else
+    warning "Invalid dialogHeight '${dialogHeight}'; using default 675"
+    dialogHeight="675"
+fi
+
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -1777,18 +1932,38 @@ function createSYMLiteInspectConfig() {
     
     # Build items array JSON with guiIndex
     local itemsJSON=""
-    local firstItem=true
+    local -a itemJSONBlocks=()
     local guiIndex=0
-    
+    local commandLineToolsRowPending="false"
+
+    # Command Line Tools row sits where the bootstrap runs: before the `homebrew` label or the first Homebrew item
+    commandLineToolsInspectMarkerFile=""
+    if isCommandLineToolsBootstrapExpected; then
+        commandLineToolsInspectMarkerFile="${dialogRuntimeDirectory}/commandLineToolsComplete"
+        commandLineToolsRowPending="true"
+        ((totalItems++))
+    fi
+
     for itemID in "${selectedItems[@]}"; do
         local itemType
         itemType=$(getItemType "${itemID}")
-        
+
         local itemConfig
         itemConfig=$(getItemConfig "${itemID}")
-        
+
+        if [[ "${commandLineToolsRowPending}" == "true" && "${itemType}" == "homebrew" ]]; then
+            itemJSONBlocks+=("$(buildCommandLineToolsInspectItemJSON "${guiIndex}")")
+            commandLineToolsRowPending="false"
+            ((guiIndex++))
+        fi
+
         if [[ "${itemType}" == "installomator" ]]; then
             parseInstallomatorItem "${itemConfig}"
+            if [[ "${commandLineToolsRowPending}" == "true" && "${itemLabel}" == "homebrew" ]]; then
+                itemJSONBlocks+=("$(buildCommandLineToolsInspectItemJSON "${guiIndex}")")
+                commandLineToolsRowPending="false"
+                ((guiIndex++))
+            fi
             local jsonBlock="{
             \"id\": \"$(escapeJSONString "${itemLabel}")\",
             \"displayName\": \"$(escapeJSONString "${itemDisplayName}")\",
@@ -1819,22 +1994,24 @@ function createSYMLiteInspectConfig() {
             continue
         fi
         
-        if [[ "${firstItem}" == "true" ]]; then
-            itemsJSON="${jsonBlock}"
-            firstItem=false
-        else
-            itemsJSON="${itemsJSON},
-        ${jsonBlock}"
-        fi
-        
+        itemJSONBlocks+=("${jsonBlock}")
         ((guiIndex++))
     done
+
+    itemsJSON="${(pj:,\n        :)itemJSONBlocks}"
 
     [[ ${#selectedInstallomatorLabels[@]} -gt 0 ]] && hasInstallomator="true"
     [[ ${#selectedJamfPolicies[@]} -gt 0 ]] && hasJamf="true"
     [[ ${#selectedHomebrewItems[@]} -gt 0 ]] && hasHomebrew="true"
 
     cachePaths+=("/Library/Managed Installs/Cache")
+
+    # Command Line Tools install runs first and takes minutes, so lead with its side message
+    # (Preset 3 shows only the first side message; swiftDialog doesn't rotate them there)
+    if [[ -n "${commandLineToolsInspectMarkerFile}" ]]; then
+        sideMessages+=("Apple’s Command Line Tools for Homebrew can take several minutes to install (with no visible progress).")
+    fi
+
     sideMessages+=("Thank you for your patience.")
     sideMessages+=("Progress is monitored by watching for files to appear.")
     sideMessages+=("Please wait while items are being processed.")
@@ -1881,6 +2058,20 @@ function createSYMLiteInspectConfig() {
         [[ ${totalItems} -gt 1 ]] && dialogTitle="${dialogTitle}s"
         messageText="Installing selected software. Items complete when files appear at their validation paths."
     fi
+
+    # Short dialogs (Parameter 6 below 500) use Preset 3 (Compact) instead of the organization's preset,
+    # sized to match the selection and completion dialogs (swiftDialog needs both width and height)
+    local inspectPreset="${organizationPreset}"
+    local inspectWindowSizeJSON=""
+    local inspectButton1TextJSON='    "button1text": "Please wait...",'
+    if [[ ${dialogHeight} -lt 500 ]]; then
+        inspectPreset="3"
+        # Preset 3 prefers config `button1text` over `autoEnableButtonText`, so omit it to let "Continue" appear on completion
+        inspectButton1TextJSON=""
+        inspectWindowSizeJSON="    \"width\": 900,
+    \"height\": ${dialogHeight},"
+        info "dialogHeight ${dialogHeight} is less than 500; using Inspect Mode Preset 3 (Compact) at 900x${dialogHeight}"
+    fi
     
     # Create the full JSON configuration
     # Note: Inspect Mode uses dual monitoring when Installomator items are selected:
@@ -1888,13 +2079,14 @@ function createSYMLiteInspectConfig() {
     # - paths: Watches file system via FSEvents for completion detection (all item types)
     if ! /bin/cat > "${dialogInspectModeJSONFile}" <<EOF
 {
-    "preset": "preset${organizationPreset}",
+    "preset": "preset${inspectPreset}",
     "title": "$(escapeJSONString "${dialogTitle}")",
     "message": "$(escapeJSONString "${messageText}")",
     "icon": "$(escapeJSONString "${mainDialogIcon}")",
     "overlayicon": "$(escapeJSONString "${organizationOverlayiconURL}")",
     "iconsize": 120,
     "size": "compact",
+${inspectWindowSizeJSON}
     "options": {
         "moveable": true,
         "windowbuttons": "min"
@@ -1909,10 +2101,10 @@ ${sideMessageJSON}
     ],
     "sideInterval": 8,
     "highlightColor": "#51a3ef",
-    "button1text": "Please wait...",
+${inspectButton1TextJSON}
     "button1disabled": true,
     "autoEnableButton": true,
-    "autoEnableButtonText": "Review Results",
+    "autoEnableButtonText": "Continue",
     "items": [
         ${itemsJSON}
     ]
@@ -2289,7 +2481,7 @@ function showSelectionDialog() {
             --json \
             --button1text "Continue" \
             --button2text "Cancel" \
-            --height 675 \
+            --height "${dialogHeight}" \
             --width 900 2>/dev/null)"
 
         rc=$?
@@ -2361,12 +2553,16 @@ function executeInstallomatorLabel() {
     local installomatorCheckPath=""
     local installomatorOwner=""
     local installomatorMode=""
+    local subtitleSuffix=""
 
     # Check if already installed
     if [[ -n "${validationPath}" && -e "${validationPath}" ]]; then
         info "Skipping '${label}': ${validationPath} already exists"
+        if [[ "${label}" == "homebrew" ]] && ! bootstrapHomebrewGitAfterLabel; then
+            subtitleSuffix="; git is missing, so brew update is unavailable"
+        fi
         skippedItems+=("${displayName}")
-        addCompletionReportRecord "${displayName}" "alreadyInstalled" "success" "${iconURL}" "No action was needed" "Already installed"
+        addCompletionReportRecord "${displayName}" "alreadyInstalled" "success" "${iconURL}" "No action was needed${subtitleSuffix}" "Already installed"
         return 0
     fi
 
@@ -2376,6 +2572,11 @@ function executeInstallomatorLabel() {
         failedItems+=("${displayName}")
         addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "Please contact support if this app is required" "Not installed"
         return 1
+    fi
+
+    # Homebrew.pkg's postinstall needs git to leave a clean checkout, so Command Line Tools go first
+    if [[ "${label}" == "homebrew" ]]; then
+        bootstrapHomebrewGitBeforeLabel
     fi
 
     notice "Installing '${label}' (${displayName}) …"
@@ -2394,8 +2595,11 @@ function executeInstallomatorLabel() {
         return 1
     else
         info "Installomator completed for '${label}'"
+        if [[ "${label}" == "homebrew" ]] && ! bootstrapHomebrewGitAfterLabel; then
+            subtitleSuffix="; git is missing, so brew update is unavailable"
+        fi
         completedItems+=("${displayName}")
-        addCompletionReportRecord "${displayName}" "installed" "success" "${iconURL}" "Ready to use" "Installed"
+        addCompletionReportRecord "${displayName}" "installed" "success" "${iconURL}" "Ready to use${subtitleSuffix}" "Installed"
         return 0
     fi
 }
@@ -2465,11 +2669,18 @@ function updateHomebrewMetadataIfNeeded() {
     fi
 
     if [[ "${homebrewUpdateAttempted}" == "true" ]]; then
-        [[ "${homebrewUpdateSucceeded}" == "true" ]] && return 0
-        return 1
+        [[ "${homebrewUpdateSucceeded}" == "false" ]] && return 1
+        return 0
     fi
 
     homebrewUpdateAttempted="true"
+
+    # `brew update` needs git; skip it instead of failing every Homebrew item (bottle and cask installs still work)
+    if ! resolveHomebrewGitPath; then
+        warning "git not found; skipping brew update (Homebrew metadata may be stale)"
+        homebrewUpdateSucceeded="skipped"
+        return 0
+    fi
 
     if ! refreshHomebrewExecutionUser; then
         errorOut "The Homebrew user for this run is not logged in; cannot update Homebrew metadata"
@@ -2533,6 +2744,215 @@ function ensureHomebrewCompletionDirectories() {
 
     if [[ ${mkdirExitCode} -ne 0 ]]; then
         warning "Could not create Homebrew completion directories under ${brewPrefix}/share (exit code: ${mkdirExitCode}); shell completions may be missing"
+        return 1
+    fi
+
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Install Command Line Tools (Optional)
+# Supplies git for Homebrew and the user's shell when none is found; runs as root via softwareupdate,
+# so no logged-in user, admin rights, or prompts are needed. Once per run; never aborts the run.
+# Adapted from Rich Trouton's install_xcode_command_line_tools.sh (macOS 10.15+ branch only)
+# https://github.com/rtrouton/rtrouton_scripts/tree/main/rtrouton_scripts/install_xcode_command_line_tools
+# Returns: 0 if git is available (or the setting is disabled), 1 otherwise
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function installCommandLineTools() {
+    local softwareUpdateList=""
+    local commandLineToolsLabel=""
+    local softwareUpdateExitCode=0
+    local stepStartSeconds=0
+
+    if [[ "${homebrewAutoInstallCommandLineTools:l}" != "true" ]]; then
+        return 0
+    fi
+
+    if resolveHomebrewGitPath; then
+        return 0
+    fi
+
+    if [[ "${commandLineToolsAttempted}" == "true" ]]; then
+        return 1
+    fi
+
+    commandLineToolsAttempted="true"
+
+    notice "git not found; installing Command Line Tools …"
+
+    # The trigger file makes softwareupdate list Command Line Tools. /tmp is world-writable, so never follow
+    # an existing (possibly user-planted) path as root: remove it, create exclusively, then verify
+    rm -f -- "${commandLineToolsTriggerFile}" 2>/dev/null
+    if ! ( setopt NO_CLOBBER; : > "${commandLineToolsTriggerFile}" ) 2>/dev/null; then
+        warning "Could not create ${commandLineToolsTriggerFile}; skipping Command Line Tools install"
+        return 1
+    fi
+    commandLineToolsTriggerFileCreated="true"
+
+    if [[ -L "${commandLineToolsTriggerFile}" || ! -f "${commandLineToolsTriggerFile}" || ! -O "${commandLineToolsTriggerFile}" ]]; then
+        warning "${commandLineToolsTriggerFile} is not a root-owned regular file; skipping Command Line Tools install"
+        commandLineToolsTriggerFileCreated="false"
+        return 1
+    fi
+
+    # Stream scan output to the log as it arrives (the scan can be quiet for a minute or more) and keep it for parsing
+    info "Checking softwareupdate for Command Line Tools (this can take a minute or more) …"
+    stepStartSeconds=${SECONDS}
+    /usr/sbin/softwareupdate --list 2>&1 | while IFS= read -r softwareUpdateOutputLine; do
+        softwareUpdateList+="${softwareUpdateOutputLine}"$'\n'
+        [[ -n "${softwareUpdateOutputLine//[[:space:]]/}" ]] && logComment "softwareupdate (CLT scan): ${softwareUpdateOutputLine}"
+    done
+    info "softwareupdate scan finished in $(( SECONDS - stepStartSeconds )) seconds"
+
+    # Newest non-beta label; version-aware sort so 26.10 ranks above 26.9
+    commandLineToolsLabel="$( print -r -- "${softwareUpdateList}" \
+        | /usr/bin/grep -E '^[[:space:]]*\* Label: Command Line Tools' \
+        | /usr/bin/grep -vi 'beta' \
+        | /usr/bin/sed -E 's/^[[:space:]]*\* Label: //; s/[[:space:]]+$//' \
+        | /usr/bin/sort -V \
+        | /usr/bin/tail -n 1 )"
+
+    if [[ -z "${commandLineToolsLabel}" ]]; then
+        rm -f -- "${commandLineToolsTriggerFile}" 2>/dev/null
+        commandLineToolsTriggerFileCreated="false"
+        warning "No Command Line Tools found in softwareupdate (offline, blocked Apple CDN, or deferred updates); Homebrew stays without git"
+        return 1
+    fi
+
+    notice "Installing '${commandLineToolsLabel}' via softwareupdate (large download; this can take several minutes) …"
+    stepStartSeconds=${SECONDS}
+    /usr/sbin/softwareupdate --install "${commandLineToolsLabel}" --verbose 2>&1 | /usr/bin/tr '\r' '\n' | while IFS= read -r softwareUpdateOutputLine; do
+        [[ -n "${softwareUpdateOutputLine//[[:space:]]/}" ]] && logComment "softwareupdate (CLT): ${softwareUpdateOutputLine}"
+    done
+    softwareUpdateExitCode=${pipestatus[1]}
+
+    rm -f -- "${commandLineToolsTriggerFile}" 2>/dev/null
+    commandLineToolsTriggerFileCreated="false"
+
+    if [[ ${softwareUpdateExitCode} -ne 0 ]]; then
+        warning "softwareupdate failed to install '${commandLineToolsLabel}' after $(( SECONDS - stepStartSeconds )) seconds (exit code: ${softwareUpdateExitCode}); Homebrew stays without git"
+        return 1
+    fi
+
+    info "softwareupdate finished installing '${commandLineToolsLabel}' in $(( SECONDS - stepStartSeconds )) seconds"
+
+    if ! /usr/bin/xcode-select -print-path >/dev/null 2>&1; then
+        info "Selecting /Library/Developer/CommandLineTools as the active developer directory"
+        /usr/bin/xcode-select --switch /Library/Developer/CommandLineTools 2>&1 | while IFS= read -r xcodeSelectOutputLine; do
+            logComment "xcode-select: ${xcodeSelectOutputLine}"
+        done
+    fi
+
+    if ! resolveHomebrewGitPath; then
+        warning "softwareupdate installed '${commandLineToolsLabel}', but git was not found; Homebrew stays without git"
+        return 1
+    fi
+
+    info "Command Line Tools installed; git at ${homebrewGitPath}"
+    logHomebrewVersion
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Log Homebrew Version
+# Once per run, when brew exists and the pinned Homebrew user is still logged in (brew refuses root).
+# `-dirty` means tracked files in the Homebrew checkout differ from HEAD; Homebrew.pkg's postinstall
+# resets its checkout only when Command Line Tools `git` is already installed
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function logHomebrewVersion() {
+    local homebrewVersion=""
+
+    if [[ "${homebrewVersionLogged}" == "true" ]]; then
+        return 0
+    fi
+
+    if [[ -z "${effectiveBrewPath}" || ! -x "${effectiveBrewPath}" || -z "${homebrewExecutionUser}" ]]; then
+        return 0
+    fi
+
+    if ! refreshHomebrewExecutionUser; then
+        return 0
+    fi
+
+    homebrewVersionLogged="true"
+    setHomebrewCommandEnvironment
+    homebrewVersion="$( runAsUser "${loggedInUser}" "${homebrewCommandEnvironment[@]}" "${effectiveBrewPath}" --version 2>/dev/null | /usr/bin/head -n 1 )"
+
+    if [[ "${homebrewVersion}" == *-dirty ]]; then
+        warning "${homebrewVersion}: Homebrew checkout has local changes (likely installed before git was available); as ${loggedInUser}, run 'brew update-reset'"
+    elif [[ -n "${homebrewVersion}" ]]; then
+        info "${homebrewVersion}"
+    fi
+
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Bootstrap git Before Installomator `homebrew` Label
+# Homebrew.pkg's postinstall resets its git checkout (`reset --hard`, `clean -f -d`) only when
+# `xcode-select -print-path` has `git`; without it, brew reports `-dirty`. Install Command Line Tools first.
+# Brew is not installed yet, so no Homebrew user is needed
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function bootstrapHomebrewGitBeforeLabel() {
+    if [[ "${enableHomebrewItems:l}" != "true" ]]; then
+        return 0
+    fi
+
+    installCommandLineTools
+    markCommandLineToolsInspectItemComplete
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Bootstrap git After Installomator `homebrew` Label
+# Runs after the label installs or skips Homebrew, so an existing Homebrew without git gets it too
+# (Command Line Tools alone don't clean an already-dirty checkout); logs `brew --version`
+# Returns: 0 if git is available (or Homebrew items are disabled or brew is missing), 1 if git is still missing
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function bootstrapHomebrewGitAfterLabel() {
+    local previousLoggedInUser="${loggedInUser}"
+
+    if [[ "${enableHomebrewItems:l}" != "true" ]]; then
+        return 0
+    fi
+
+    # Pre-flight leaves effectiveBrewPath empty when Homebrew was missing (or no Homebrew items are configured)
+    if [[ -z "${effectiveBrewPath}" ]]; then
+        effectiveBrewPath="$(detectHomebrewBinary)"
+    fi
+
+    if [[ -z "${effectiveBrewPath}" ]]; then
+        return 0
+    fi
+
+    # Pin the Homebrew user if pre-flight couldn't; Command Line Tools install itself needs no user
+    if [[ -z "${homebrewExecutionUser}" ]]; then
+        if refreshHomebrewExecutionUser; then
+            homebrewExecutionUser="${loggedInUser}"
+        else
+            loggedInUser="${previousLoggedInUser}"
+        fi
+    fi
+
+    installCommandLineTools
+    markCommandLineToolsInspectItemComplete
+    logHomebrewVersion
+
+    if ! resolveHomebrewGitPath; then
+        if [[ "${homebrewAutoInstallCommandLineTools:l}" != "true" ]]; then
+            warning "git not found; brew update and third-party taps are unavailable (homebrewAutoInstallCommandLineTools=false)"
+        fi
         return 1
     fi
 
@@ -2676,6 +3096,9 @@ function executeHomebrewItem() {
         addCompletionReportRecord "${displayName}" "notInstalled" "fail" "${iconURL}" "The same user must stay logged in for Homebrew installs" "Not installed"
         return 1
     fi
+
+    installCommandLineTools
+    markCommandLineToolsInspectItemComplete
 
     if ! updateHomebrewMetadataIfNeeded; then
         failedItems+=("${displayName}")
@@ -2838,7 +3261,7 @@ function executeSYMLiteItems() {
 
         if kill -0 "${dialogPID}" 2>/dev/null; then
             warning "Dialog did not close after ${maxWait} seconds; requesting quit"
-            closeInspectMode "timeout waiting for Review Results"
+            closeInspectMode "timeout waiting for Continue"
         fi
 
         dialogPID=""
@@ -2954,7 +3377,7 @@ function showCompletionDialog() {
     \"icon\": \"$(escapeJSONString "${dialogIcon}")\",
     \"button1text\": \"Close\",
     \"infotext\": \"$(escapeJSONString "${scriptVersion}")\",
-    \"height\": 675,
+    \"height\": ${dialogHeight},
     \"width\": 900,
     \"messagefont\": \"size=${fontSize}\",
     \"listitem\": ${listItemsJSON}

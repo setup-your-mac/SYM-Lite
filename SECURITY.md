@@ -8,7 +8,7 @@ This project is a **macOS-only, root-run** workflow that can execute Installomat
 
 Only the **latest release** is actively supported for security updates.
 
-- Current stable/beta reference: [v1.4.0](https://github.com/Setup-Your-Mac/SYM-Lite/releases) (and newer)
+- Current stable/beta reference: [v1.6.0](https://github.com/Setup-Your-Mac/SYM-Lite/releases) (and newer)
 - Older releases receive no security patches
 
 Use the newest release whenever possible, especially in Jamf Pro or other MDM-managed deployments.
@@ -66,4 +66,4 @@ You should receive an acknowledgment within **48 hours**. We will work with you 
 
 For non-vulnerability questions, open a regular GitHub Issue or Discussion.
 
-Last updated: April 2026
+Last updated: October 2026
