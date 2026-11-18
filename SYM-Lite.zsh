@@ -16,20 +16,18 @@
 #
 # HISTORY
 #
-# Version 1.6.0, 10-Oct-2026, Dan K. Snelson (@dan-snelson)
-# - When `git` is missing (no Xcode, Command Line Tools, or brewed `git`), SYM-Lite installs Apple's Command Line Tools as `root` via `softwareupdate` so Homebrew isn't left degraded; logic adapted from Rich Trouton's `install_xcode_command_line_tools.sh`; disable with `homebrewAutoInstallCommandLineTools="false"` (Issue #27)
-# - Command Line Tools install runs once per run, before the Installomator `homebrew` label installs Homebrew (Homebrew.pkg's postinstall resets its `git` checkout only when Command Line Tools `git` exists; otherwise `brew --version` reports `-dirty`), after the label skips an existing Homebrew, and before the first Homebrew item; it needs no logged-in user
-# - Pre-flight logs whether `git` is available for Homebrew
-# - With `homebrewUpdateBeforeInstall="true"`, a still-missing `git` skips `brew update` with one `[WARNING]` instead of failing every Homebrew item
-# - The Installomator `homebrew` completion row adds "git is missing, so brew update is unavailable" when Command Line Tools couldn't be installed
-# - Inspect Mode shows a "Command Line Tools (for Homebrew)" row where the install runs (before the `homebrew` label or the first Homebrew item); it completes once `git` is available, and its side message leads the list (Preset 3 shows only the first side message) noting it can take several minutes with no visible progress
-# - After the Installomator `homebrew` label (or a Command Line Tools install), `brew --version` is logged once per run; a `-dirty` checkout logs a `[WARNING]` suggesting `brew update-reset`
-# - Command Line Tools progress is logged: `softwareupdate` scan and install output stream to the log as `softwareupdate (CLT scan): …` and `softwareupdate (CLT): …`, with elapsed seconds for each step
-# - Selection and completion dialog height is now Parameter 6 (default: `675`), so a short `operationsCSV` list can use a smaller window
-# - When Parameter 6 is less than `500`, Inspect Mode uses Preset 3 (Compact) instead of `organizationPreset`, sized to match the selection and completion dialogs (900 x Parameter 6)
-# - Inspect Mode's completion button reads "Continue" (was "Review Results"); Preset 3 omits "Please wait..." because it ignores `autoEnableButtonText` when `button1text` is set
-# - Installomator `codex` validation path is now `/Applications/ChatGPT.app` (where the label installs), so Inspect Mode marks it complete and enables the button
-# - Added Installomator labels: Oracle MySQL Workbench CE (`mysqlworkbenchce`), OutSystems Service Studio (`outsystemsservicestudio`)
+# Version 2.0.0b3, 18-Nov-2026, Dan K. Snelson (@dan-snelson)
+# - A fresh Mac (no Homebrew) now needs one run instead of two: Homebrew casks and formulae are no longer hidden when `brew` is missing; they're listed (interactive) or accepted (silent) and run after the Installomator `homebrew` label installs Homebrew
+# - When Homebrew items are selected, the Installomator `homebrew` label moves to the front of the run (interactive mode sorts by display name; silent mode keeps CSV order); when Homebrew is missing and the label isn't selected (or isn't in the Parameter 5 allowlist), SYM-Lite adds it
+# - When Homebrew items are selected, Jamf policy items run after them (keeping their relative order), so a policy that checks the user's login shell sees Homebrew's tools
+# - Homebrew items are still hidden when the Installomator `homebrew` label is unavailable for the run, or when `brewPath` is set but not executable
+# - When Homebrew is missing, the selection dialog says Homebrew casks and formulae install after Homebrew, which is added automatically
+# - On Apple silicon, after the last Homebrew item (and before the first Jamf policy item), SYM-Lite appends `eval "$(/opt/homebrew/bin/brew shellenv)"` to the logged-in user's `~/.zprofile` (written as that user, never `root`) unless it's already there, so `/opt/homebrew/bin` precedes `/usr/bin` and `python3` is Homebrew's; non-zsh login shells log a `[WARNING]` with the line to add; disable with `homebrewAddShellEnvironmentToZprofile="false"`
+# - After the last Homebrew item, SYM-Lite logs which `python3` the user's login shell resolves; when Homebrew `python3` is expected, a `[WARNING]` flags `/usr/bin/python3`, a missing `python3`, or a version older than 3.10 (`/usr/bin/python3` is never executed, because its stub prompts for Command Line Tools)
+# - Added Homebrew formulae: Colima (`colima`), Docker CLI (`docker`), Docker Compose (`docker-compose`), Docker Credential Helper (`docker-credential-helper`), GitHub CLI (`gh`), GNU Coreutils (`coreutils`), JFrog CLI (`jfrog-cli`), Python 3 (`python3`), tfenv (Terraform) (`tfenv`)
+# - **Breaking:** selection and completion dialog height (`dialogHeight`) moved from Parameter 6 to Parameter 8; update Jamf policies that set Parameter 6 to a height (otherwise the number becomes the selection dialog title and the height falls back to `675`)
+# - Parameter 6 sets the selection dialog title (default: `Setup Your Mac Lite: Developer Edition`); it also titles the "No selectable items" dialog
+# - Parameter 7 replaces the selection dialog's built-in greeting, verbatim (swiftDialog renders `\n` and Markdown); "Select at least one item" is still appended; silent mode ignores Parameters 6 and 7
 #
 ####################################################################################################
 
@@ -46,7 +44,7 @@ setopt NONOMATCH
 setopt TYPESET_SILENT
 
 # Script Version
-scriptVersion="1.6.0"
+scriptVersion="2.0.0b3"
 
 # Script Human-readable Name
 humanReadableScriptName="Setup Your Mac Lite: Developer Edition"
@@ -76,10 +74,12 @@ autoload -Uz is-at-least
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 # Runtime inputs (Jamf parameters by default; CLI flags can override)
-operationMode="${4:-"interactive"}"     # Parameter 4: Operation Mode [ interactive (default) | silent ]
+operationMode="${4:-"interactive"}"                             # Parameter 4: Operation Mode [ interactive (default) | silent ]
 operationMode="${operationMode:l}"
-operationsCSV="${5:-""}"                # Parameter 5: Comma-separated list of item IDs (silent: items to run; interactive: optional selection dialog allowlist)
-dialogHeight="${6:-"675"}"              # Parameter 6: Selection and completion dialog height, in pixels (default: 675)
+operationsCSV="${5:-""}"                                        # Parameter 5: Comma-separated list of item IDs (silent: items to run; interactive: optional selection dialog allowlist)
+selectionDialogTitle="${6:-"${humanReadableScriptName}"}"       # Parameter 6: Selection dialog title (default: humanReadableScriptName)
+selectionDialogMessage="${7:-""}"                               # Parameter 7: Selection dialog message (default: built-in greeting)
+dialogHeight="${8:-"675"}"                                      # Parameter 8: Selection and completion dialog height, in pixels (default: 675)
 
 
 
@@ -120,6 +120,9 @@ homebrewAutoTrustItems="true"
 # Remove Apple's quarantine flag from installed Homebrew cask apps (only when Gatekeeper accepts the app)
 homebrewAutoRemoveQuarantine="false"
 
+# Add `brew shellenv` to the logged-in user's ~/.zprofile (Apple silicon only) so Homebrew precedes /usr/bin
+homebrewAddShellEnvironmentToZprofile="true"
+
 # Organization's Overlayicon URL
 organizationOverlayiconURL="https://swiftdialog.app/_astro/dialog_logo.CZF0LABZ_ZjWz8w.webp"
 
@@ -154,6 +157,7 @@ installomatorLabels=(
     "awsvpnclient | AWS VPN Client | /Applications/AWS VPN Client/AWS VPN Client.app | https://usw2.ics.services.jamfcloud.com/icon/hash_1d1bef5523d9f7eca5a45f2db9a63732e85edb5f914220807ca740ba7c4881b9"
     "bruno | Bruno | /Applications/Bruno.app | https://usw2.ics.services.jamfcloud.com/icon/hash_48501630ad2f5dd5de3e055d6acdda07682895440cad366ee7befac71cab1399"
     "charles | Charles Proxy | /Applications/Charles.app | https://use2.ics.services.jamfcloud.com/icon/hash_59b395ca81889a6d83deda8e6babc5ae4bc5931d36a72b738fe30b84d027593d"
+    "claudedesktop | Claude Desktop | /Applications/Claude.app | https://appinstallers-packages.services.jamfcloud.com/icons/6DC.png"
     "docker | Docker | /Applications/Docker.app | https://usw2.ics.services.jamfcloud.com/icon/hash_a344dca5fdc0e86822e8f21ec91088e6591b1e292bdcebdee1281fbd794c2724"
     "firefoxesr | Firefox ESR | /Applications/Firefox.app | https://appinstallers-packages.services.jamfcloud.com/icons/0B3.png"
     "homebrew | Homebrew | ${homebrewPrefix}/bin/brew | https://usw2.ics.services.jamfcloud.com/icon/hash_9edff3eb98482a1aaf17f8560488f7b500cc7dc64955b8a9027b3801cab0fd82"
@@ -183,9 +187,18 @@ homebrewItems=(
     "cask:1password-cli | 1Password CLI | ${homebrewPrefix}/bin/op | https://usw2.ics.services.jamfcloud.com/icon/hash_9456dcae0b68fa522a7b411e7ebd2f9062a1a60cb0681ab3cbad3dda64a410c6"
     "cask:claude-code | Claude CLI | ${homebrewPrefix}/bin/claude | https://appinstallers-packages.services.jamfcloud.com/icons/6DC.png"
     "cask:codex | codex-cli | ${homebrewPrefix}/bin/codex | https://usw2.ics.services.jamfcloud.com/icon/hash_9d2a1b6f204d2a0d6e99dfc7a411edc0d269c1ab748514dcdde46ea7b4277e51"
+    "formula:colima | Colima | ${homebrewPrefix}/bin/colima | https://usw2.ics.services.jamfcloud.com/icon/hash_a9a7557b3142dd165372a1e66bca2533c783723956f1415861eac6fd5058b588"
     "formula:direnv | direnv | ${homebrewPrefix}/bin/direnv | https://usw2.ics.services.jamfcloud.com/icon/hash_a9a7557b3142dd165372a1e66bca2533c783723956f1415861eac6fd5058b588"
+    "formula:docker | Docker CLI | ${homebrewPrefix}/bin/docker | https://usw2.ics.services.jamfcloud.com/icon/hash_a344dca5fdc0e86822e8f21ec91088e6591b1e292bdcebdee1281fbd794c2724"
+    "formula:docker-compose | Docker Compose | ${homebrewPrefix}/bin/docker-compose | https://usw2.ics.services.jamfcloud.com/icon/hash_a344dca5fdc0e86822e8f21ec91088e6591b1e292bdcebdee1281fbd794c2724"
+    "formula:docker-credential-helper | Docker Credential Helper | ${homebrewPrefix}/bin/docker-credential-osxkeychain | https://usw2.ics.services.jamfcloud.com/icon/hash_a344dca5fdc0e86822e8f21ec91088e6591b1e292bdcebdee1281fbd794c2724"
+    "formula:gh | GitHub CLI | ${homebrewPrefix}/bin/gh | https://appinstallers-packages.services.jamfcloud.com/icons/0C8.png"
+    "formula:coreutils | GNU Coreutils | ${homebrewPrefix}/bin/gtimeout | https://usw2.ics.services.jamfcloud.com/icon/hash_a9a7557b3142dd165372a1e66bca2533c783723956f1415861eac6fd5058b588"
+    "formula:jfrog-cli | JFrog CLI | ${homebrewPrefix}/bin/jf | https://usw2.ics.services.jamfcloud.com/icon/hash_f4ad183b00506d019c9529568c67f5fbde9656c9fbf5d9814139db8c40fe7acc"
     "cask:mem | Mem AI | /Applications/Mem.app | https://use1.ics.services.jamfcloud.com/icon/hash_62e0fba2609b56b27ddaafa0c4add4d0b2ce372094ad12f6b8a05f2bfe2cc236"
+    "formula:python3 | Python 3 | ${homebrewPrefix}/bin/python3 | https://usw2.ics.services.jamfcloud.com/icon/hash_8d443619ff847ed683948b64df147ea802d6844fbd691beb202cc48dd421afe3"
     "cask:soulver | Soulver AI | /Applications/Soulver 3.app | https://use1.ics.services.jamfcloud.com/icon/hash_d6c332f220193ed32f94839dde785921185b4ecc4de6687b5ef9d7a0add42dca"
+    "formula:tfenv | Terraform | ${homebrewPrefix}/bin/tfenv | https://usw2.ics.services.jamfcloud.com/icon/hash_c5c0d2d205848e646e0c8d6bdac18ceee65f4461438185a972f86286332fd226"
     "cask:wpsoffice | WPS Office | /Applications/wpsoffice.app | https://use1.ics.services.jamfcloud.com/icon/hash_ed541f6a4ce8422f9230153519391cb9095744d2e459e1baa3453df4dab5db5b"
 )
 
@@ -246,6 +259,7 @@ homebrewVersionLogged="false"
 homebrewCommandEnvironment=()
 loggedInUserIsAdmin=""
 homebrewExecutionUser=""
+homebrewItemsDeferred="false"
 
 
 
@@ -1083,38 +1097,43 @@ function normalizeHomebrewItems() {
     fi
 
     detectedBrewPath="$(detectHomebrewBinary)"
-    if [[ -z "${detectedBrewPath}" ]]; then
-        if [[ -n "${brewPath}" ]]; then
-            warning "Configured Homebrew path is unavailable or not executable: ${brewPath}"
-        else
-            warning "Homebrew binary not found at /opt/homebrew/bin/brew or /usr/local/bin/brew"
-        fi
+    if [[ -z "${detectedBrewPath}" && -n "${brewPath}" ]]; then
+        warning "Configured Homebrew path is unavailable or not executable: ${brewPath}"
         warning "Homebrew items will be hidden from this run until Homebrew is installed"
         homebrewItems=()
         effectiveBrewPath=""
         return 0
     fi
 
-    effectiveBrewPath="${detectedBrewPath}"
-    preFlight "Homebrew binary found at ${effectiveBrewPath}"
-
-    if [[ "${effectiveBrewPath:h:h}" != "${homebrewPrefix}" ]]; then
-        warning "Homebrew binary ${effectiveBrewPath} does not match validation prefix ${homebrewPrefix}; skip and completion checks for Homebrew items may be wrong"
-    fi
-
-    # Log only; Command Line Tools install waits until first Homebrew use so the selection dialog isn't delayed
-    if resolveHomebrewGitPath; then
-        preFlight "git available for Homebrew at ${homebrewGitPath}"
-    elif [[ "${homebrewAutoInstallCommandLineTools:l}" == "true" ]]; then
-        warning "git not found; will install Command Line Tools before first Homebrew use"
+    if [[ -z "${detectedBrewPath}" ]]; then
+        # Keep Homebrew items; the Installomator 'homebrew' label runs first and installs brew (see finalizeDeferredHomebrewItems)
+        warning "Homebrew binary not found at /opt/homebrew/bin/brew or /usr/local/bin/brew"
+        preFlight "Homebrew items will run after the Installomator 'homebrew' label installs Homebrew"
+        homebrewItemsDeferred="true"
+        effectiveBrewPath=""
     else
-        warning "git not found; brew update and third-party taps are unavailable (homebrewAutoInstallCommandLineTools=false)"
+        effectiveBrewPath="${detectedBrewPath}"
+        preFlight "Homebrew binary found at ${effectiveBrewPath}"
+
+        if [[ "${effectiveBrewPath:h:h}" != "${homebrewPrefix}" ]]; then
+            warning "Homebrew binary ${effectiveBrewPath} does not match validation prefix ${homebrewPrefix}; skip and completion checks for Homebrew items may be wrong"
+        fi
+
+        # Log only; Command Line Tools install waits until first Homebrew use so the selection dialog isn't delayed
+        if resolveHomebrewGitPath; then
+            preFlight "git available for Homebrew at ${homebrewGitPath}"
+        elif [[ "${homebrewAutoInstallCommandLineTools:l}" == "true" ]]; then
+            warning "git not found; will install Command Line Tools before first Homebrew use"
+        else
+            warning "git not found; brew update and third-party taps are unavailable (homebrewAutoInstallCommandLineTools=false)"
+        fi
     fi
 
     if ! refreshHomebrewExecutionUser; then
         warning "No logged-in user is available to run Homebrew; hiding Homebrew items from this run"
         homebrewItems=()
         effectiveBrewPath=""
+        homebrewItemsDeferred="false"
         return 0
     fi
 
@@ -1146,6 +1165,29 @@ function normalizeHomebrewItems() {
 
     homebrewItems=("${normalizedHomebrewItems[@]}")
     preFlight "Homebrew item validation complete: ${#homebrewItems[@]} available, ${filteredItemCount} filtered"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Finalize Deferred Homebrew Items
+# Runs after normalizeInstallomatorLabels(); Homebrew items deferred because brew is missing need the
+# Installomator `homebrew` label to install it, so hide them when that label is unavailable for this run
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function finalizeDeferredHomebrewItems() {
+    if [[ "${homebrewItemsDeferred}" != "true" ]]; then
+        return 0
+    fi
+
+    if [[ "$(getItemType "homebrew")" != "installomator" ]]; then
+        warning "Installomator 'homebrew' label is unavailable for this run; Homebrew items will be hidden until Homebrew is installed"
+        homebrewItems=()
+        homebrewItemsDeferred="false"
+        return 0
+    fi
+
+    preFlight "Homebrew items deferred: ${#homebrewItems[@]} will run after the Installomator 'homebrew' label"
 }
 
 
@@ -1788,6 +1830,26 @@ else
     dialogHeight="675"
 fi
 
+# Selection dialog title (Parameter 6) and message (Parameter 7): trim leading/trailing whitespace;
+# whitespace-only title falls back to humanReadableScriptName, whitespace-only message uses the built-in greeting
+selectionDialogTitle="${selectionDialogTitle#"${selectionDialogTitle%%[![:space:]]*}"}"
+selectionDialogTitle="${selectionDialogTitle%"${selectionDialogTitle##*[![:space:]]}"}"
+if [[ -z "${selectionDialogTitle}" ]]; then
+    selectionDialogTitle="${humanReadableScriptName}"
+fi
+
+selectionDialogMessage="${selectionDialogMessage#"${selectionDialogMessage%%[![:space:]]*}"}"
+selectionDialogMessage="${selectionDialogMessage%"${selectionDialogMessage##*[![:space:]]}"}"
+
+if [[ "${operationMode}" == "interactive" ]]; then
+    if [[ "${selectionDialogTitle}" != "${humanReadableScriptName}" ]]; then
+        info "Using custom selection dialog title: ${selectionDialogTitle}"
+    fi
+    if [[ -n "${selectionDialogMessage}" ]]; then
+        info "Using custom selection dialog message (Parameter 7)"
+    fi
+fi
+
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -1865,6 +1927,14 @@ fi
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 normalizeInstallomatorLabels
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Pre-flight Check: Finalize Deferred Homebrew Items
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+finalizeDeferredHomebrewItems
 
 
 
@@ -2059,7 +2129,7 @@ function createSYMLiteInspectConfig() {
         messageText="Installing selected software. Items complete when files appear at their validation paths."
     fi
 
-    # Short dialogs (Parameter 6 below 500) use Preset 3 (Compact) instead of the organization's preset,
+    # Short dialogs (Parameter 8 below 500) use Preset 3 (Compact) instead of the organization's preset,
     # sized to match the selection and completion dialogs (swiftDialog needs both width and height)
     local inspectPreset="${organizationPreset}"
     local inspectWindowSizeJSON=""
@@ -2394,7 +2464,7 @@ function showNoSelectableItemsDialog() {
     fi
 
     "${dialogBinary}" \
-        --title "${humanReadableScriptName}" \
+        --title "${selectionDialogTitle}" \
         --infotext "${scriptVersion}" \
         --messagefont "size=${fontSize}" \
         --message "${messageText}" \
@@ -2447,8 +2517,14 @@ function showSelectionDialog() {
     local dialogOutput
     local rc
 
-    # Build message
-    baseMessage="**$(date +'Happy %A,') ${loggedInUserFirstname}!**\n\nSelect items to install; Homebrew casks and formulae are available **after** \`brew\` has been installed."
+    # Build message (Parameter 7 replaces the built-in greeting verbatim)
+    if [[ -n "${selectionDialogMessage}" ]]; then
+        baseMessage="${selectionDialogMessage}"
+    elif [[ "${homebrewItemsDeferred}" == "true" ]]; then
+        baseMessage="**$(date +'Happy %A,') ${loggedInUserFirstname}!**\n\nSelect items to install; Homebrew casks and formulae install **after** Homebrew, which is added automatically."
+    else
+        baseMessage="**$(date +'Happy %A,') ${loggedInUserFirstname}!**\n\nSelect items to install; Homebrew casks and formulae are available **after** \`brew\` has been installed."
+    fi
 
     # Build unified checkbox list (Installomator + Jamf, sorted together by display name)
     getSelectionDialogCheckboxesJSON
@@ -2471,7 +2547,7 @@ function showSelectionDialog() {
         fi
 
         dialogOutput="$("${dialogBinary}" \
-            --title "${humanReadableScriptName}" \
+            --title "${selectionDialogTitle}" \
             --infotext "${scriptVersion}" \
             --messagefont "size=${fontSize}" \
             --message "${messageText}" \
@@ -2534,6 +2610,62 @@ function separateSelectedItemsByType() {
 
 
 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Order Homebrew Label Before Homebrew Items
+# Items run in selectedItems order (interactive: display-name order; silent: CSV order), so when Homebrew
+# items are selected, move the Installomator `homebrew` label to the front, or add it when Homebrew is
+# missing (deferred) and the label wasn't selected (or wasn't in the Parameter 5 allowlist).
+# Jamf policy items move after the Homebrew items (keeping their relative order), because a policy may
+# probe the user's login shell (e.g., one that expects Homebrew's gh and python3)
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function orderHomebrewLabelBeforeHomebrewItems() {
+    local itemID=""
+    local hasHomebrewItems="false"
+    local -a jamfPolicyIDs=()
+    local -a reorderedItems=()
+
+    for itemID in "${selectedItems[@]}"; do
+        if [[ "$(getItemType "${itemID}")" == "homebrew" ]]; then
+            hasHomebrewItems="true"
+            break
+        fi
+    done
+
+    if [[ "${hasHomebrewItems}" != "true" ]]; then
+        return 0
+    fi
+
+    for itemID in "${selectedItems[@]}"; do
+        if [[ "$(getItemType "${itemID}")" == "jamf" ]]; then
+            jamfPolicyIDs+=("${itemID}")
+        fi
+    done
+
+    if (( ${#jamfPolicyIDs[@]} > 0 )); then
+        reorderedItems=("${(@)selectedItems:|jamfPolicyIDs}" "${jamfPolicyIDs[@]}")
+        if [[ "${reorderedItems[*]}" != "${selectedItems[*]}" ]]; then
+            selectedItems=("${reorderedItems[@]}")
+            info "Moved ${#jamfPolicyIDs[@]} Jamf policy item(s) after Homebrew items"
+        fi
+    fi
+
+    if (( ${selectedItems[(Ie)homebrew]} > 0 )); then
+        if [[ "${selectedItems[1]}" != "homebrew" ]]; then
+            selectedItems=("homebrew" "${(@)selectedItems:#homebrew}")
+            info "Moved Installomator 'homebrew' label to the front so Homebrew installs before Homebrew items"
+        fi
+        return 0
+    fi
+
+    if [[ "${homebrewItemsDeferred}" == "true" ]]; then
+        selectedItems=("homebrew" "${selectedItems[@]}")
+        notice "Homebrew is not installed; added Installomator 'homebrew' label ahead of selected Homebrew items"
+    fi
+}
+
+
+
 ####################################################################################################
 #
 # Execution Engine Functions
@@ -2560,6 +2692,9 @@ function executeInstallomatorLabel() {
         info "Skipping '${label}': ${validationPath} already exists"
         if [[ "${label}" == "homebrew" ]] && ! bootstrapHomebrewGitAfterLabel; then
             subtitleSuffix="; git is missing, so brew update is unavailable"
+        fi
+        if [[ "${label}" == "homebrew" && -n "${effectiveBrewPath}" ]]; then
+            homebrewItemsDeferred="false"
         fi
         skippedItems+=("${displayName}")
         addCompletionReportRecord "${displayName}" "alreadyInstalled" "success" "${iconURL}" "No action was needed${subtitleSuffix}" "Already installed"
@@ -2597,6 +2732,10 @@ function executeInstallomatorLabel() {
         info "Installomator completed for '${label}'"
         if [[ "${label}" == "homebrew" ]] && ! bootstrapHomebrewGitAfterLabel; then
             subtitleSuffix="; git is missing, so brew update is unavailable"
+        fi
+        # bootstrapHomebrewGitAfterLabel re-detects brew and pins the Homebrew user, so deferred Homebrew items can run now
+        if [[ "${label}" == "homebrew" && -n "${effectiveBrewPath}" ]]; then
+            homebrewItemsDeferred="false"
         fi
         completedItems+=("${displayName}")
         addCompletionReportRecord "${displayName}" "installed" "success" "${iconURL}" "Ready to use${subtitleSuffix}" "Installed"
@@ -3190,6 +3329,131 @@ function executeHomebrewItem() {
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Ensure Homebrew Shell Environment (Optional; Apple silicon only)
+# Homebrew.pkg's /etc/paths.d/homebrew lands after /etc/paths, so /opt/homebrew/bin follows /usr/bin and
+# `python3` resolves to /usr/bin/python3; append `brew shellenv` to the logged-in user's ~/.zprofile.
+# Reads and writes as the user (never root), so no root write follows a user-controlled symlink.
+# Intel needs nothing: /usr/local/bin already precedes /usr/bin. Logs only; never fails the run
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function ensureHomebrewShellEnvironment() {
+    local brewPrefix="${effectiveBrewPath:h:h}"
+    local userShell=""
+    local zprofilePath=""
+    local shellEnvironmentLine=""
+    local shellEnvironmentBlock=""
+    local appendExitCode=0
+
+    if [[ "${homebrewAddShellEnvironmentToZprofile:l}" != "true" ]]; then
+        return 0
+    fi
+
+    if [[ -z "${effectiveBrewPath}" ]]; then
+        return 0
+    fi
+
+    if [[ "${brewPrefix}" == "/usr/local" ]]; then
+        return 0
+    fi
+
+    if ! refreshHomebrewExecutionUser; then
+        warning "The Homebrew user for this run is not logged in; not adding Homebrew to ~/.zprofile"
+        return 0
+    fi
+
+    if [[ -z "${loggedInUserHomeDirectory}" ]]; then
+        warning "Home directory for ${loggedInUser} is unknown; not adding Homebrew to ~/.zprofile"
+        return 0
+    fi
+
+    shellEnvironmentLine="eval \"\$(${effectiveBrewPath} shellenv)\""
+    zprofilePath="${loggedInUserHomeDirectory}/.zprofile"
+
+    userShell=$( /usr/bin/dscl -plist . read "/Users/${loggedInUser}" UserShell 2>/dev/null | /usr/bin/plutil -extract "dsAttrTypeStandard:UserShell.0" raw -o - - 2>/dev/null )
+    if [[ "${userShell}" != */zsh ]]; then
+        warning "${loggedInUser}'s login shell is ${userShell:-unknown}, not zsh; not editing ~/.zprofile. To put Homebrew ahead of /usr/bin, add this line to that shell's login file: ${shellEnvironmentLine}"
+        return 0
+    fi
+
+    if runAsUser "${loggedInUser}" /usr/bin/grep -qsF -e "brew shellenv" -e "${effectiveBrewPath:h}" "${zprofilePath}"; then
+        info "${zprofilePath} already sets up Homebrew; leaving it unchanged"
+        return 0
+    fi
+
+    shellEnvironmentBlock=$'\n'"# Added by SYM-Lite: put Homebrew ahead of /usr/bin"$'\n'"${shellEnvironmentLine}"
+
+    info "Adding Homebrew shell environment to ${zprofilePath} as ${loggedInUser} …"
+    runAsUser "${loggedInUser}" /bin/sh -c 'printf "%s\n" "$1" >> "$2"' sh "${shellEnvironmentBlock}" "${zprofilePath}" 2>&1 | while IFS= read -r zprofileOutputLine; do
+        logComment "Homebrew (zprofile): ${zprofileOutputLine}"
+    done
+    appendExitCode=${pipestatus[1]}
+
+    if [[ ${appendExitCode} -ne 0 ]]; then
+        warning "Could not update ${zprofilePath} (exit code: ${appendExitCode}); to put Homebrew ahead of /usr/bin, ${loggedInUser} can add: ${shellEnvironmentLine}"
+        return 0
+    fi
+
+    info "Added '${shellEnvironmentLine}' to ${zprofilePath}; new Terminal sessions put Homebrew ahead of /usr/bin"
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Log python3 Resolution
+# Logs which `python3` the logged-in user's zsh login shell resolves (it reads ~/.zprofile, so this also
+# confirms ensureHomebrewShellEnvironment). Never executes /usr/bin/python3: without Command Line Tools,
+# its stub prompts the user to install them. Warns only when Homebrew `python3` is expected (`formula:python3`
+# selected or brewed `python3` present); otherwise the info line is enough. Logs only; never fails the run
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function logPython3Resolution() {
+    local python3Path=""
+    local python3VersionOutput=""
+    local python3Version=""
+    local python3Expected="false"
+    local python3Issue=""
+
+    if ! refreshHomebrewExecutionUser; then
+        return 0
+    fi
+
+    if (( ${selectedHomebrewItems[(Ie)formula:python3]} > 0 )); then
+        python3Expected="true"
+    elif [[ -n "${effectiveBrewPath}" && -x "${effectiveBrewPath:h}/python3" ]]; then
+        python3Expected="true"
+    fi
+
+    setHomebrewCommandEnvironment
+    python3Path="$( runAsUser "${loggedInUser}" "${homebrewCommandEnvironment[@]}" /bin/zsh -lc 'command -v python3' </dev/null 2>/dev/null | /usr/bin/head -n 1 )"
+
+    if [[ -z "${python3Path}" ]]; then
+        info "python3 for ${loggedInUser}'s login shell: not found"
+        python3Issue="python3 is missing from ${loggedInUser}'s login shell"
+    elif [[ "${python3Path}" == "/usr/bin/python3" ]]; then
+        info "python3 for ${loggedInUser}'s login shell: ${python3Path} (macOS system python3; not executed)"
+        python3Issue="python3 for ${loggedInUser} resolves to /usr/bin/python3, not Homebrew's; check that ~/.zprofile runs brew shellenv"
+    elif [[ "${python3Path}" != /* ]]; then
+        info "python3 for ${loggedInUser}'s login shell: ${python3Path} (not a file path; not executed)"
+    else
+        python3VersionOutput="$( runAsUser "${loggedInUser}" "${homebrewCommandEnvironment[@]}" "${python3Path}" --version </dev/null 2>&1 | /usr/bin/head -n 1 )"
+        info "python3 for ${loggedInUser}'s login shell: ${python3Path} (${python3VersionOutput:-unknown version})"
+        python3Version="${python3VersionOutput#Python }"
+        if [[ ! "${python3Version}" =~ ^[0-9]+\.[0-9]+ ]] || ! is-at-least 3.10 "${python3Version}"; then
+            python3Issue="python3 at ${python3Path} is not 3.10 or newer (${python3VersionOutput:-unknown version})"
+        fi
+    fi
+
+    if [[ -n "${python3Issue}" && "${python3Expected}" == "true" ]]; then
+        warning "${python3Issue}"
+    fi
+
+    return 0
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Unified Execution Dispatcher
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -3227,18 +3491,25 @@ function executeSYMLiteItems() {
         info "Silent mode enabled; skipping Inspect Mode UI"
     fi
     
+    local homebrewShellEnvironmentEnsured="false"
+
     # Process each selected item sequentially
     for itemID in "${selectedItems[@]}"; do
         local itemType
         itemType=$(getItemType "${itemID}")
-        
+
         local itemConfig
         itemConfig=$(getItemConfig "${itemID}")
-        
+
         if [[ "${itemType}" == "installomator" ]]; then
             parseInstallomatorItem "${itemConfig}"
             executeInstallomatorLabel "${itemLabel}" "${itemValidationPath}" "${itemDisplayName}" "${itemIconURL}"
         elif [[ "${itemType}" == "jamf" ]]; then
+            # Jamf policies run after Homebrew items; put Homebrew ahead of /usr/bin before the first one
+            if (( ${#selectedHomebrewItems[@]} > 0 )) && [[ "${homebrewShellEnvironmentEnsured}" != "true" ]]; then
+                ensureHomebrewShellEnvironment
+                homebrewShellEnvironmentEnsured="true"
+            fi
             parseJamfPolicyItem "${itemConfig}"
             executeJamfPolicy "${itemTrigger}" "${itemValidationPath}" "${itemDisplayName}" "${itemIconURL}"
         elif [[ "${itemType}" == "homebrew" ]]; then
@@ -3248,7 +3519,15 @@ function executeSYMLiteItems() {
             warning "Unknown item type for ID: ${itemID}"
         fi
     done
-    
+
+    # Put Homebrew ahead of /usr/bin in the user's login shell (Apple silicon), then log which python3 it resolves
+    if (( ${#selectedHomebrewItems[@]} > 0 )); then
+        if [[ "${homebrewShellEnvironmentEnsured}" != "true" ]]; then
+            ensureHomebrewShellEnvironment
+        fi
+        logPython3Resolution
+    fi
+
     if [[ -n "${dialogPID}" ]]; then
         # Wait for Dialog to close (with timeout)
         info "Waiting for Inspect Mode (PID: ${dialogPID}) to close …"
@@ -3500,6 +3779,7 @@ notice "Operation mode: ${operationMode}"
 if ! showSelectionDialog; then
     fatal "No valid operations were selected; exiting."
 fi
+orderHomebrewLabelBeforeHomebrewItems
 separateSelectedItemsByType
 
 # Phase 3 & 4: Execute selected items via Inspect Mode

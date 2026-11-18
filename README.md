@@ -1,6 +1,6 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/Setup-Your-Mac/SYM-Lite?display_name=tag) ![GitHub issues](https://img.shields.io/github/issues-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/Setup-Your-Mac/SYM-Lite) ![GitHub pull requests](https://img.shields.io/github/issues-pr-raw/Setup-Your-Mac/SYM-Lite) ![GitHub closed pull requests](https://img.shields.io/github/issues-pr-closed-raw/Setup-Your-Mac/SYM-Lite) [![swiftDialog](https://img.shields.io/badge/swiftDialog-Enabled-blue)](https://swiftdialog.app) [![Semgrep Security Scan](https://img.shields.io/badge/security%20scanned%20by-Semgrep-00C7B7?style=flat&logo=semgrep&logoColor=white)](https://semgrep.dev)
 
-# SYM-Lite (1.6.0)
+# SYM-Lite (2.0.0b3)
 
 > **SYM-Lite** is a lean, purpose-built script for executing MDM-agnostic [Installomator labels](https://github.com/Installomator/Installomator/tree/main/fragments/labels) and [Homebrew](https://brew.sh) casks / formulas, as well as Jamf Pro-specific [policy triggers](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/Triggers_for_Policies), all through a unified [swiftDialog](https://swiftdialog.app) selection and reporting interface.
 
@@ -40,7 +40,7 @@
 ✓ **Alphabetical sorting** — All items sorted together by display name in selection dialog  
 ✓ **Silent mode** — CSV-based automation support  
 ✓ **Early Installomator label validation** — Configured Installomator labels are verified against the active Installomator file before they can appear or run  
-✓ **Homebrew package support** — Approved casks and formulas run in the logged-in user context when `brew` is available  
+✓ **Homebrew package support** — Approved casks and formulas run in the logged-in user context; on a Mac without Homebrew, they run right after the Installomator `homebrew` label installs it  
 ✓ **Command Line Tools bootstrap** — Installs Apple's Command Line Tools when Homebrew has no `git`, so `brew update` and taps work  
 ✓ **Inspect Mode monitoring** — Rich status updates for Installomator labels and path-based progress for Homebrew/Jamf items  
 ✓ **Log monitoring** — Parses Installomator.log for intermediate states and captures Homebrew/Jamf output into the main log  
@@ -103,7 +103,8 @@ homebrewItems=(
 **Important:**
 - Use `cask:` or `formula:` prefixes in the item ID
 - Homebrew examples and default validation paths in this repo assume Apple silicon with Homebrew installed in `/opt/homebrew`
-- Homebrew items are hidden for the current run if no working `brew` binary is available
+- When no `brew` binary is found (and `brewPath` is empty), Homebrew items stay available and run after the Installomator `homebrew` label installs Homebrew: SYM-Lite moves that label to the front of the run when Homebrew items are selected, or adds it when it isn't selected, so a fresh Mac needs only one run. Homebrew items are hidden for the run only when the `homebrew` label is unavailable (e.g., Installomator is missing) or `brewPath` is set but not executable
+- When Homebrew items are selected, Jamf policy items run after them (keeping their relative order), so a policy that checks the user's login shell (e.g., for `gh` or Homebrew's `python3`) runs after those tools and `brew shellenv` are in place
 - Homebrew items also require a valid logged-in user because package installs run in user context rather than as `root`
 - Third-party tap items use fully-qualified tokens (e.g., `formula:hashicorp/tap/terraform`); when `homebrewAutoTrustItems="true"`, SYM-Lite runs `brew trust` for that item before install (official taps are always trusted)
 - If the logged-in user is not a local administrator, casks install to `~/Applications` (validation paths under `/Applications/` also match `~/Applications/`)
@@ -119,6 +120,8 @@ homebrewItems=(
 - If `git` is still missing, `homebrewUpdateBeforeInstall="true"` skips `brew update` with one `[WARNING]` instead of failing every Homebrew item, the Installomator `homebrew` completion row adds "git is missing, so brew update is unavailable", and third-party tap items (`user/tap/name`) fail because tapping needs `git`
 - Interactive mode disables already-installed items, so to repair an existing Homebrew that lacks `git`, select a Homebrew item that isn't installed yet, or run silent mode with `homebrew` in Parameter 5
 - An installed `Xcode.app` satisfies the `git` check even if its license hasn't been accepted; `git` then fails until the license is accepted (e.g., `xcodebuild -license accept` in the Xcode policy)
+- On Apple silicon, Homebrew.pkg adds `/opt/homebrew/bin` via `/etc/paths.d/homebrew`, which `path_helper` places **after** `/usr/bin`, so `python3` would still resolve to `/usr/bin/python3`. When `homebrewAddShellEnvironmentToZprofile="true"` (default), after the last Homebrew item (and before the first Jamf policy item) SYM-Lite appends `eval "$(/opt/homebrew/bin/brew shellenv)"` (under a `# Added by SYM-Lite` comment) to the logged-in user's `~/.zprofile`, unless the file already mentions `brew shellenv` or `/opt/homebrew/bin`. The file is read and written as that user, never `root`. If the user's login shell isn't zsh, SYM-Lite logs a `[WARNING]` with the line to add instead. Intel Macs are skipped because `/usr/local/bin` already precedes `/usr/bin`
+- After the last Homebrew item, SYM-Lite logs which `python3` the user's zsh login shell resolves, with its version. When `formula:python3` was selected or Homebrew's `python3` exists, a `[WARNING]` flags `/usr/bin/python3`, a missing `python3`, or a version older than 3.10. SYM-Lite never executes `/usr/bin/python3`, because without Command Line Tools its stub prompts the user to install them
 
 ### Adding Jamf Policy Items
 
@@ -198,7 +201,7 @@ If the user clicks `Cancel` in the selection dialog, interactive mode exits clea
 Parameter 5 (`operationsCSV`) is optional in interactive mode. When it's set, the selection dialog shows only the listed item IDs, so one copy of SYM-Lite can back several focused Self Service policies.
 
 ```zsh
-sudo /path/to/SYM-Lite.zsh "" "" "" "interactive" "homebrew" 375
+sudo /path/to/SYM-Lite.zsh "" "" "" "interactive" "homebrew" "" "" 375
 ```
 
 <table>
@@ -227,21 +230,28 @@ sudo /path/to/SYM-Lite.zsh "" "" "" "interactive" "homebrew" 375
 **Via Jamf Policy (e.g., "Developer Tools"):**
 - Parameter 4: `interactive`
 - Parameter 5: `homebrew,cask:1password-cli,cask:claude-code,cask:codex,formula:direnv`
-- Parameter 6: `675` (optional dialog height)
+- Parameter 6: `Developer Tools` (optional selection dialog title)
+- Parameter 7: `**Pick your developer tools**\n\nSelect items to install.` (optional selection dialog message)
+- Parameter 8: `675` (optional dialog height)
 
 **Direct execution:**
 ```bash
-sudo /path/to/SYM-Lite.zsh "" "" "" interactive "cask:codex,formula:direnv" 450
+sudo /path/to/SYM-Lite.zsh "" "" "" interactive "cask:codex,formula:direnv" "" "" 450
 ```
+
+> **Upgrading from 1.6.0:** dialog height moved from Parameter 6 to Parameter 8. Policies that set Parameter 6 to a height must move that value to Parameter 8; otherwise the number becomes the selection dialog title and the height falls back to `675`.
 
 - An empty Parameter 5 (including separator-only values such as `,`) shows all available items, as before
 - Listed items are still sorted by display name; CSV order is ignored
 - Item IDs are parsed and normalized exactly as in silent mode; unknown or unavailable IDs are warned and skipped
 - Status sublabels and `selectionDialogDefaultChecked` work the same way for the listed items
 - If Parameter 5 contains no valid item IDs, SYM-Lite logs the valid item IDs for the run, shows the "no selectable items" dialog, and exits without falling back to the full list
-- Homebrew items are hidden when `brew` is not installed, so a Homebrew-focused list should also include the `homebrew` Installomator label; once Homebrew is installed, run the policy again to see the casks and formulae
-- Parameter 6 (`dialogHeight`) sets the selection and completion dialog height in pixels (default: `675`); use a smaller value for short lists. Invalid values log a `[WARNING]` and fall back to `675`; silent mode ignores it
-- When Parameter 6 is less than `500`, Inspect Mode switches to [Preset 3 (Compact)](https://swiftdialog.app/advanced/inspect/preset3/) instead of `organizationPreset`, at the same 900-pixel width and Parameter 6 height as the selection and completion dialogs; its button shows a disabled "Continue" until items complete. Preset 3 shows only the first side message (no rotation)
+- Homebrew items stay listed when `brew` is not installed; SYM-Lite runs the `homebrew` Installomator label ahead of the selected Homebrew items (adding it even when Parameter 5 doesn't list it), so one run installs Homebrew and then the casks and formulae
+- Parameter 6 (`selectionDialogTitle`) sets the title of the selection dialog and the "no selectable items" dialog (default: `Setup Your Mac Lite: Developer Edition`); an empty or whitespace-only value uses the default. Inspect Mode, completion, and restart dialogs keep their own titles
+- Parameter 7 (`selectionDialogMessage`) replaces the selection dialog's built-in greeting and Homebrew note, verbatim (no placeholders; swiftDialog renders `\n` and Markdown); an empty or whitespace-only value uses the built-in message. "Select at least one item" is still appended when nothing is selected
+- Parameter 8 (`dialogHeight`) sets the selection and completion dialog height in pixels (default: `675`); use a smaller value for short lists. Invalid values log a `[WARNING]` and fall back to `675`
+- Silent mode ignores Parameters 6, 7, and 8
+- When Parameter 8 is less than `500`, Inspect Mode switches to [Preset 3 (Compact)](https://swiftdialog.app/advanced/inspect/preset3/) instead of `organizationPreset`, at the same 900-pixel width and Parameter 8 height as the selection and completion dialogs; its button shows a disabled "Continue" until items complete. Preset 3 shows only the first side message (no rotation)
 
 ### Silent Mode
 
@@ -271,8 +281,36 @@ If SYM-Lite reports an unknown item ID, compare Parameter 5 against the identifi
 - Installomator labels filtered out during pre-flight validation are warned and skipped in the CSV input
 - If Jamf policy items are disabled or the Jamf binary is missing, Jamf item IDs in the CSV are warned and skipped
 - If Homebrew items are disabled or unavailable for the current run, Homebrew item IDs in the CSV are warned and skipped
+- On a Mac without Homebrew, Homebrew item IDs are accepted; `homebrew` runs first, whether the CSV lists it later or not at all
 - Exits with an error if the CSV contains no valid item IDs
 - Suitable for automated deployment
+
+### Fresh Mac Developer Toolchain
+
+One run on a Mac without Homebrew installs Homebrew, Apple's Command Line Tools (which supply `git`), and a developer toolchain: GitHub CLI, Python 3.10+, a container runtime (Colima with the Docker CLI, Compose, and credential helper), GNU `timeout` (from GNU Coreutils, as `gtimeout`), Terraform via `tfenv`, and JFrog CLI.
+
+**Via Jamf Policy:**
+- Parameter 4: `silent`
+- Parameter 5: `homebrew,formula:gh,formula:python3,formula:coreutils,formula:colima,formula:docker,formula:docker-compose,formula:docker-credential-helper,formula:tfenv,formula:jfrog-cli,cask:claude-code`
+
+**What happens:**
+1. Command Line Tools install (when `git` is missing), then the Installomator `homebrew` label installs Homebrew
+2. The Homebrew formulae and casks install as the logged-in user
+3. On Apple silicon, `eval "$(/opt/homebrew/bin/brew shellenv)"` is added to the user's `~/.zprofile`, so new Terminal sessions resolve Homebrew's `python3` instead of `/usr/bin/python3`
+4. The log records which `python3` the user's login shell resolves
+
+Homebrew items still need a logged-in user, because they install in user context; with nobody logged in, silent mode skips them.
+
+> **Warning:** Pick Docker Desktop (the `docker` Installomator label) **or** Colima (`formula:colima` with the Docker CLI formulae), not both: the two runtimes compete for the same Docker socket.
+
+**Not scripted (per-user):**
+- `gh auth login` (and any org SSO authorization)
+- Claude Code plugin installs
+- `colima start`
+- `gh extension install …`
+- `tfenv install <version>`
+- Stack toolchains (`uv`, `awscli`, Node, JDK, .NET)
+- PyYAML
 
 ---
 
@@ -287,7 +325,7 @@ If SYM-Lite reports an unknown item ID, compare Parameter 5 against the identifi
 - **Installomator** — Required only when Installomator labels are configured and available for the current run
   - Configured Installomator labels are validated early against the active `organizationInstallomatorFile`
   - If the Installomator file is unavailable or cannot be parsed, Installomator labels are hidden and skipped for that run
-- **Homebrew Binary** — Required only when `enableHomebrewItems="true"` and Homebrew items are configured
+- **Homebrew Binary** — Required only when `enableHomebrewItems="true"` and Homebrew items are configured; when missing, the Installomator `homebrew` label installs it during the same run
 - **Apple Command Line Tools** — Installed via `softwareupdate` only when `homebrewAutoInstallCommandLineTools="true"` and Homebrew has no `git`; needs Apple's software update catalog and CDN
 - **Jamf Pro Binary** — Required only when `enableJamfPolicyItems="true"` and Jamf policy items are configured
 
@@ -299,16 +337,19 @@ If SYM-Lite reports an unknown item ID, compare Parameter 5 against the identifi
 PRE-FLIGHT CHECKS
   ├─ Verify root
   ├─ Check/install swiftDialog
-  ├─ Normalize Installomator labels
-  ├─ Normalize Homebrew item availability, detect brew path, and log git availability
   ├─ Normalize Jamf item availability from configuration
+  ├─ Normalize Homebrew item availability, detect brew path, and log git availability (no brew: defer Homebrew items)
+  ├─ Normalize Installomator labels
+  ├─ Finalize deferred Homebrew items (hide them if the `homebrew` label is unavailable)
   ├─ Verify Jamf binary (if enabled and items configured; removes Jamf items when missing)
   ├─ Warn on item IDs configured in more than one item array
        ↓
 SELECTION INTERFACE
   ├─ Show dialog (interactive; optional Parameter 5 allowlist) or parse CSV (silent)
   ├─ Validate at least one selection
-  └─ Collect selected item IDs (interactive: display-name order; silent: CSV order)
+  ├─ Collect selected item IDs (interactive: display-name order; silent: CSV order)
+  ├─ When Homebrew items are selected, move Jamf policy items after them (keeping their relative order)
+  └─ Move the `homebrew` label ahead of selected Homebrew items (or add it when Homebrew is missing)
        ↓
 INSPECT MODE CONFIGURATION
   ├─ Interactive mode only
@@ -324,7 +365,8 @@ EXECUTION ENGINE
   ├─ Process items sequentially in selection order
   │   ├─ Installomator: executeInstallomatorLabel() (`homebrew` label: install Command Line Tools first if git is missing)
   │   ├─ Homebrew: executeHomebrewItem() (installs Command Line Tools first if git is missing)
-  │   └─ Jamf: executeJamfPolicy()
+  │   └─ Jamf: executeJamfPolicy() (before the first one, when Homebrew items were selected: add `brew shellenv` to ~/.zprofile on Apple silicon)
+  ├─ After the last item, when Homebrew items ran: add `brew shellenv` to ~/.zprofile (Apple silicon) if no Jamf policy item already did, then log python3 resolution
   ├─ Interactive mode waits for Inspect Mode to close
   └─ Silent mode exits when execution completes
        ↓
@@ -405,7 +447,7 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `organizationPreset` | `"2"` | swiftDialog Inspect Mode preset (1-4); Preset 3 is used when Parameter 6 is less than `500` |
+| `organizationPreset` | `"2"` | swiftDialog Inspect Mode preset (1-4); Preset 3 is used when Parameter 8 is less than `500` |
 | `organizationInstallomatorFile` | `/Library/Application Support/AppAutoPatch/Installomator/Installomator.sh` | Path to Installomator.sh |
 | `installomatorLog` | `/var/log/Installomator.log` | Installomator log path for monitoring |
 | `jamfBinary` | `/usr/local/jamf/bin/jamf` | Path to jamf binary |
@@ -417,6 +459,7 @@ swiftDialog's [Inspect Mode](https://swiftdialog.app/advanced/inspect-mode/) use
 | `homebrewAutoInstallCommandLineTools` | `"true"` | When no `git` is found, install Apple's Command Line Tools as `root` via `softwareupdate` before first Homebrew use, so `brew update` and taps work; `"false"` only logs a `[WARNING]` |
 | `homebrewAutoTrustItems` | `"true"` | Run `brew trust` for configured third-party tap items (`user/tap/name`) before install |
 | `homebrewAutoRemoveQuarantine` | `"false"` | After a cask install, remove `com.apple.quarantine` from its `.app` validation path, only when Gatekeeper accepts the app |
+| `homebrewAddShellEnvironmentToZprofile` | `"true"` | Apple silicon only: after the last Homebrew item (before the first Jamf policy item), append `eval "$(/opt/homebrew/bin/brew shellenv)"` to the logged-in user's `~/.zprofile` (as that user) so Homebrew precedes `/usr/bin` |
 | `organizationOverlayiconURL` | swiftDialog logo | Overlay icon URL |
 | `mainDialogIcon` | GitHub raw `SYM_icon.png` URL | Main dialog icon |
 | `fontSize` | `"14"` | Dialog message font size |
@@ -429,6 +472,6 @@ Item IDs must be unique across `installomatorLabels`, `jamfPolicyItems`, and `ho
 
 ---
 
-**Version:** 1.6.0  
-**Date:** 08-Oct-2026  
+**Version:** 2.0.0b3  
+**Date:** 18-Nov-2026  
 **Author:** Dan K. Snelson (@dan-snelson)

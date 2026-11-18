@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## 2.0.0b3 - 18-Nov-2026
+- A fresh Mac (no Homebrew) now needs one run instead of two: Homebrew casks and formulae are no longer hidden when `brew` is missing; they're listed (interactive) or accepted (silent) and run after the Installomator `homebrew` label installs Homebrew
+- When Homebrew items are selected, the Installomator `homebrew` label moves to the front of the run (interactive mode sorts by display name; silent mode keeps CSV order); when Homebrew is missing and the label isn't selected (or isn't in the Parameter 5 allowlist), SYM-Lite adds it
+- When Homebrew items are selected, Jamf policy items run after them (keeping their relative order), so a policy that checks the user's login shell sees Homebrew's tools
+- Homebrew items are still hidden when the Installomator `homebrew` label is unavailable for the run, or when `brewPath` is set but not executable
+- When Homebrew is missing, the selection dialog says Homebrew casks and formulae install after Homebrew, which is added automatically
+- On Apple silicon, after the last Homebrew item (and before the first Jamf policy item), SYM-Lite appends `eval "$(/opt/homebrew/bin/brew shellenv)"` to the logged-in user's `~/.zprofile` (written as that user, never `root`) unless it's already there, so `/opt/homebrew/bin` precedes `/usr/bin` and `python3` is Homebrew's; non-zsh login shells log a `[WARNING]` with the line to add; disable with `homebrewAddShellEnvironmentToZprofile="false"`
+- After the last Homebrew item, SYM-Lite logs which `python3` the user's login shell resolves; when Homebrew `python3` is expected, a `[WARNING]` flags `/usr/bin/python3`, a missing `python3`, or a version older than 3.10 (`/usr/bin/python3` is never executed, because its stub prompts for Command Line Tools)
+- Added Homebrew formulae: Colima (`colima`), Docker CLI (`docker`), Docker Compose (`docker-compose`), Docker Credential Helper (`docker-credential-helper`), GitHub CLI (`gh`), GNU Coreutils (`coreutils`), JFrog CLI (`jfrog-cli`), Python 3 (`python3`), tfenv (Terraform) (`tfenv`)
+- **Breaking:** selection and completion dialog height (`dialogHeight`) moved from Parameter 6 to Parameter 8; update Jamf policies that set Parameter 6 to a height (otherwise the number becomes the selection dialog title and the height falls back to `675`)
+- Parameter 6 sets the selection dialog title (default: `Setup Your Mac Lite: Developer Edition`); it also titles the "No selectable items" dialog
+- Parameter 7 replaces the selection dialog's built-in greeting, verbatim (swiftDialog renders `\n` and Markdown); "Select at least one item" is still appended; silent mode ignores Parameters 6 and 7
+
 ## 1.6.0 - 10-Oct-2026
 - When `git` is missing (no Xcode, Command Line Tools, or brewed `git`), SYM-Lite installs Apple's Command Line Tools as `root` via `softwareupdate` so Homebrew isn't left degraded; logic adapted from Rich Trouton's `install_xcode_command_line_tools.sh`; disable with `homebrewAutoInstallCommandLineTools="false"` (Issue #27)
 - Command Line Tools install runs once per run, before the Installomator `homebrew` label installs Homebrew (Homebrew.pkg's postinstall resets its `git` checkout only when Command Line Tools `git` exists; otherwise `brew --version` reports `-dirty`), after the label skips an existing Homebrew, and before the first Homebrew item; it needs no logged-in user
